@@ -8,6 +8,7 @@ __pycache__/
 data.json
 json_file.json
 students.csv
+chroma_store/
 
 # Local editor files
 .vscode/
