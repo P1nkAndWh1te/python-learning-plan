@@ -12,17 +12,37 @@ TOP_K = 3
 DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
-EVALUATION_QUESTIONS = [
-    "RAG 的基本流程是什么？",
-    "API Key 为什么不能写进代码？",
-    "什么是 embedding？",
-    "向量数据库有什么作用？",
-    "DeepSeek API 怎么配置？",
+EVALUATION_CASES = [
+    {"question": "Day8 学了什么？", "expected_top_chunk": 2},
+    {"question": "DeepSeek API 怎么配置？", "expected_top_chunk": 2},
+    {"question": "OpenAI API 额度和 ChatGPT Plus 互通吗？", "expected_top_chunk": 3},
+    {"question": "API Key 为什么不能写进代码？", "expected_top_chunk": 3},
+    {"question": "怎么从环境变量读取 DEEPSEEK_API_KEY？", "expected_top_chunk": 3},
+    {"question": "Day9 学了什么？", "expected_top_chunk": 4},
+    {"question": "什么是 embedding？", "expected_top_chunk": 4},
+    {"question": "向量数据库有什么作用？", "expected_top_chunk": 5},
+    {"question": "当前项目使用哪个向量数据库？", "expected_top_chunk": 5},
+    {"question": "RAG 的基本流程是什么？", "expected_top_chunk": 6},
 ]
 
 CONCEPTS = {
     "python": ["python", "脚本", "程序"],
-    "api": ["api", "api key", "接口", "调用", "请求", "密钥", "环境变量", "base_url", "sdk"],
+    "day8": ["day8", "llm api", "deepseek api"],
+    "day9": ["day9", "embedding", "chroma", "向量相似度"],
+    "api": [
+        "api",
+        "api key",
+        "接口",
+        "调用",
+        "请求",
+        "密钥",
+        "环境变量",
+        "base_url",
+        "sdk",
+        "额度",
+        "plus",
+        "互通",
+    ],
     "git": ["git", "提交", "版本", "仓库"],
     "rag": ["rag", "检索增强", "来源", "引用"],
     "data": ["数据", "csv", "表格", "pandas"],
@@ -30,7 +50,7 @@ CONCEPTS = {
     "embedding": ["embedding", "向量", "数字向量", "相似度", "转换"],
     "chroma": ["chroma", "向量数据库", "存储", "查找", "相似"],
     "llamaindex": ["llamaindex", "索引"],
-    "deepseek": ["deepseek", "大模型", "llm", "openai sdk"],
+    "deepseek": ["deepseek", "deepseek_api_key", "大模型", "llm", "openai sdk"],
 }
 
 
@@ -245,16 +265,24 @@ def generate_answer_with_deepseek(question: str, retrieved_chunks: list[dict]) -
     return response.choices[0].message.content or ""
 
 
-def evaluate_retrieval(questions: list[str], chunks: list[str], top_k: int) -> list[dict]:
+def evaluate_retrieval(evaluation_cases: list[dict], chunks: list[str], top_k: int) -> list[dict]:
     rows = []
 
-    for question in questions:
+    for case in evaluation_cases:
+        question = case["question"]
+        expected_top_chunk = case["expected_top_chunk"]
         retrieved_chunks = retrieve_relevant_chunks(question, chunks, top_k=top_k)
         matched_concepts = get_matched_concepts(question)
+        actual_top_chunk = (
+            retrieved_chunks[0]["chunk_index"]
+            if retrieved_chunks
+            else None
+        )
 
         rows.append(
             {
                 "question": question,
+                "expected_top_chunk": f"Chunk {expected_top_chunk}",
                 "matched_concepts": ", ".join(matched_concepts) or "none",
                 "top_chunks": ", ".join(
                     f"Chunk {item['chunk_index']}" for item in retrieved_chunks
@@ -264,17 +292,26 @@ def evaluate_retrieval(questions: list[str], chunks: list[str], top_k: int) -> l
                     if retrieved_chunks
                     else "none"
                 ),
+                "hit": actual_top_chunk == expected_top_chunk,
             }
         )
 
     return rows
 
 
+def calculate_hit_rate(evaluation_rows: list[dict]) -> float:
+    if not evaluation_rows:
+        return 0.0
+
+    hit_count = sum(1 for row in evaluation_rows if row["hit"])
+    return hit_count / len(evaluation_rows)
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day21: evaluate retrieval quality")
+    st.caption("Day25: evaluate retrieval with expected chunks")
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -317,7 +354,9 @@ def main() -> None:
         st.caption(
             "Run fixed questions to inspect which chunks are retrieved before LLM generation."
         )
-        evaluation_rows = evaluate_retrieval(EVALUATION_QUESTIONS, chunks, top_k=TOP_K)
+        evaluation_rows = evaluate_retrieval(EVALUATION_CASES, chunks, top_k=TOP_K)
+        hit_rate = calculate_hit_rate(evaluation_rows)
+        st.write(f"Hit rate: {hit_rate:.0%}")
         st.dataframe(evaluation_rows, use_container_width=True, hide_index=True)
 
     question = st.text_area(
