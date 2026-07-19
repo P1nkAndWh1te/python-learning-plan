@@ -370,7 +370,7 @@ def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day32: compare teaching keyword embedding and BGE Chinese embedding")
+    st.caption("Local document QA with retrieval evaluation and source citations")
 
     embedding_mode = st.sidebar.radio(
         "Embedding mode",
