@@ -6,6 +6,7 @@ Current scope:
 
 ```text
 GET /health
+services/chunking.py
 ```
 
 It does not replace the Streamlit app yet. The goal is to introduce a reusable
@@ -39,8 +40,7 @@ Expected response:
 
 The next backend steps are:
 
-- Extract chunking logic from Streamlit.
+- Extract embedding logic from Streamlit.
 - Add document upload endpoint.
 - Add QA endpoint.
 - Add evaluation endpoint.
-
