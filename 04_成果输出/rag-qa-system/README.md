@@ -2,7 +2,7 @@
 
 这是 Python/RAG 学习计划的正式项目成果目录。
 
-当前 Day20 版本实现 Streamlit 页面、TXT/Markdown 文档读取、固定长度文档切分、教学版 embedding、Chroma 检索、上下文展示、来源引用和 DeepSeek 生成回答。
+当前 Day21 版本实现 Streamlit 页面、TXT/Markdown 文档读取、固定长度文档切分、教学版 embedding、Chroma 检索、上下文展示、来源引用、DeepSeek 生成回答和固定问题检索评估。
 
 ## 当前功能
 
@@ -19,6 +19,8 @@
 - 将检索结果格式化为后续 LLM 可用的上下文。
 - 显示来源引用列表。
 - 使用 DeepSeek 基于检索上下文生成最终回答。
+- 使用固定测试问题观察检索质量。
+- 显示每个测试问题命中的概念、Top chunks 和 best distance。
 - 输入问题。
 - 点击按钮提交问题。
 - 显示检索到的 chunk。
@@ -50,3 +52,4 @@ $env:DEEPSEEK_API_KEY="your_api_key"
 - Day18：接入教学版 embedding 和 Chroma。
 - Day19：优化检索结果展示和来源引用。
 - Day20：接入 DeepSeek 生成回答。
+- Day21：固定问题检索质量评估。

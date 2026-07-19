@@ -12,6 +12,14 @@ TOP_K = 3
 DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
+EVALUATION_QUESTIONS = [
+    "RAG 的基本流程是什么？",
+    "API Key 为什么不能写进代码？",
+    "什么是 embedding？",
+    "向量数据库有什么作用？",
+    "DeepSeek API 怎么配置？",
+]
+
 CONCEPTS = {
     "python": ["python", "脚本", "程序"],
     "api": ["api", "接口", "调用", "请求"],
@@ -189,11 +197,36 @@ def generate_answer_with_deepseek(question: str, retrieved_chunks: list[dict]) -
     return response.choices[0].message.content or ""
 
 
+def evaluate_retrieval(questions: list[str], chunks: list[str], top_k: int) -> list[dict]:
+    rows = []
+
+    for question in questions:
+        retrieved_chunks = retrieve_relevant_chunks(question, chunks, top_k=top_k)
+        matched_concepts = get_matched_concepts(question)
+
+        rows.append(
+            {
+                "question": question,
+                "matched_concepts": ", ".join(matched_concepts) or "none",
+                "top_chunks": ", ".join(
+                    f"Chunk {item['chunk_index']}" for item in retrieved_chunks
+                ) or "none",
+                "best_distance": (
+                    f"{retrieved_chunks[0]['distance']:.4f}"
+                    if retrieved_chunks
+                    else "none"
+                ),
+            }
+        )
+
+    return rows
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day20: generate answers from retrieved context with DeepSeek")
+    st.caption("Day21: evaluate retrieval quality")
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -231,6 +264,13 @@ def main() -> None:
         for index, chunk in enumerate(chunks, start=1):
             with st.expander(f"Chunk {index} | {len(chunk)} characters"):
                 st.code(chunk, language="markdown")
+
+        st.subheader("Retrieval evaluation")
+        st.caption(
+            "Run fixed questions to inspect which chunks are retrieved before LLM generation."
+        )
+        evaluation_rows = evaluate_retrieval(EVALUATION_QUESTIONS, chunks, top_k=TOP_K)
+        st.dataframe(evaluation_rows, use_container_width=True, hide_index=True)
 
     question = st.text_area(
         "Question",
