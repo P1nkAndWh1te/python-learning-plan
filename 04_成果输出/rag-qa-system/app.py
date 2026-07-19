@@ -74,6 +74,12 @@ def embed_text(text: str) -> list[float]:
     return vector
 
 
+def get_matched_concepts(text: str) -> list[str]:
+    vector = embed_text(text)
+    concepts = list(CONCEPTS.keys())
+    return [concept for concept, value in zip(concepts, vector) if value > 0]
+
+
 def build_chunk_collection(chunks: list[str]):
     client = chromadb.EphemeralClient()
     collection = client.get_or_create_collection(name="uploaded_document_chunks")
@@ -124,11 +130,22 @@ def retrieve_relevant_chunks(question: str, chunks: list[str], top_k: int) -> li
     return retrieved_chunks
 
 
+def format_retrieved_context(retrieved_chunks: list[dict]) -> str:
+    context_blocks = []
+
+    for item in retrieved_chunks:
+        context_blocks.append(
+            f"[Chunk {item['chunk_index']}]\n{item['text']}"
+        )
+
+    return "\n\n---\n\n".join(context_blocks)
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day18: embed chunks and retrieve with Chroma")
+    st.caption("Day19: retrieve chunks with source references")
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -190,6 +207,7 @@ def main() -> None:
 
         st.subheader("Answer")
         retrieved_chunks = retrieve_relevant_chunks(question, chunks, top_k=TOP_K)
+        matched_concepts = get_matched_concepts(question)
 
         if not retrieved_chunks:
             st.warning(
@@ -200,7 +218,21 @@ def main() -> None:
 
         st.write(
             "The app has embedded chunks with a manual keyword vector and retrieved "
-            "the most relevant chunks from Chroma. LLM generation starts later."
+            "the most relevant chunks from Chroma. These chunks are the context "
+            "that a later LLM call will use to generate the final answer."
+        )
+
+        st.write("Matched concepts:", ", ".join(matched_concepts))
+        st.caption("Distance is returned by Chroma. Lower distance means more similar.")
+
+        st.subheader("Context for later LLM")
+        st.code(format_retrieved_context(retrieved_chunks), language="markdown")
+
+        st.subheader("Sources")
+        st.write(
+            ", ".join(
+                f"Chunk {item['chunk_index']}" for item in retrieved_chunks
+            )
         )
 
         st.subheader("Retrieved chunks")

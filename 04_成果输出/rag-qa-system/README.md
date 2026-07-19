@@ -2,7 +2,7 @@
 
 这是 Python/RAG 学习计划的正式项目成果目录。
 
-当前 Day18 版本实现 Streamlit 页面、TXT/Markdown 文档读取、固定长度文档切分、教学版 embedding 和 Chroma 检索。LLM 生成会在后续学习日接入。
+当前 Day19 版本实现 Streamlit 页面、TXT/Markdown 文档读取、固定长度文档切分、教学版 embedding、Chroma 检索、上下文展示和来源引用。LLM 生成会在后续学习日接入。
 
 ## 当前功能
 
@@ -15,6 +15,9 @@
 - 使用关键词计数生成教学版 embedding。
 - 将 chunk 写入临时 Chroma collection。
 - 根据用户问题检索 Top 3 相关 chunk。
+- 显示问题命中的概念维度。
+- 将检索结果格式化为后续 LLM 可用的上下文。
+- 显示来源引用列表。
 - 输入问题。
 - 点击按钮提交问题。
 - 显示检索到的 chunk。
