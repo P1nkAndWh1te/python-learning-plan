@@ -6,8 +6,8 @@ from openai import OpenAI, OpenAIError, RateLimitError
 
 
 MAX_PREVIEW_CHARS = 2000
-DEFAULT_CHUNK_SIZE = 500
-DEFAULT_CHUNK_OVERLAP = 100
+DEFAULT_CHUNK_SIZE = 350
+DEFAULT_CHUNK_OVERLAP = 50
 TOP_K = 3
 DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -22,15 +22,15 @@ EVALUATION_QUESTIONS = [
 
 CONCEPTS = {
     "python": ["python", "脚本", "程序"],
-    "api": ["api", "接口", "调用", "请求"],
+    "api": ["api", "api key", "接口", "调用", "请求", "密钥", "环境变量", "base_url", "sdk"],
     "git": ["git", "提交", "版本", "仓库"],
-    "rag": ["rag", "检索", "文档", "知识库"],
+    "rag": ["rag", "检索增强", "来源", "引用"],
     "data": ["数据", "csv", "表格", "pandas"],
-    "sql": ["sql", "数据库", "查询", "表"],
-    "embedding": ["embedding", "向量", "相似度"],
-    "chroma": ["chroma", "向量数据库"],
+    "sql": ["sql", "查询", "表格", "结构化"],
+    "embedding": ["embedding", "向量", "数字向量", "相似度", "转换"],
+    "chroma": ["chroma", "向量数据库", "存储", "查找", "相似"],
     "llamaindex": ["llamaindex", "索引"],
-    "deepseek": ["deepseek", "大模型", "llm"],
+    "deepseek": ["deepseek", "大模型", "llm", "openai sdk"],
 }
 
 
@@ -59,14 +59,46 @@ def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> li
             "chunk_overlap must be greater than or equal to 0 and less than chunk_size"
         )
 
+    markdown_sections = split_markdown_sections(cleaned_text)
+    if len(markdown_sections) > 1:
+        chunks = []
+        for section in markdown_sections:
+            if len(section) <= chunk_size:
+                chunks.append(section)
+            else:
+                chunks.extend(split_by_character_count(section, chunk_size, chunk_overlap))
+        return chunks
+
+    return split_by_character_count(cleaned_text, chunk_size, chunk_overlap)
+
+
+def split_markdown_sections(text: str) -> list[str]:
+    lines = text.splitlines()
+    sections = []
+    current_lines = []
+
+    for line in lines:
+        if line.startswith("## ") and current_lines:
+            sections.append("\n".join(current_lines).strip())
+            current_lines = [line]
+        else:
+            current_lines.append(line)
+
+    if current_lines:
+        sections.append("\n".join(current_lines).strip())
+
+    return [section for section in sections if section]
+
+
+def split_by_character_count(text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     chunks = []
     start = 0
 
-    while start < len(cleaned_text):
+    while start < len(text):
         end = start + chunk_size
-        chunks.append(cleaned_text[start:end])
+        chunks.append(text[start:end])
 
-        if end >= len(cleaned_text):
+        if end >= len(text):
             break
 
         start = end - chunk_overlap
@@ -95,15 +127,28 @@ def get_matched_concepts(text: str) -> list[str]:
 
 def build_chunk_collection(chunks: list[str]):
     client = chromadb.EphemeralClient()
-    collection = client.get_or_create_collection(name="uploaded_document_chunks")
+    collection = client.get_or_create_collection(
+        name="uploaded_document_chunks",
+        metadata={"hnsw:space": "cosine"},
+    )
 
-    ids = [f"chunk-{index}" for index in range(1, len(chunks) + 1)]
-    embeddings = [embed_text(chunk) for chunk in chunks]
-    metadatas = [{"chunk_index": index} for index in range(1, len(chunks) + 1)]
+    embedded_chunks = []
+    for index, chunk in enumerate(chunks, start=1):
+        embedding = embed_text(chunk)
+        if any(embedding):
+            embedded_chunks.append((index, chunk, embedding))
+
+    if not embedded_chunks:
+        return None
+
+    ids = [f"chunk-{index}" for index, _, _ in embedded_chunks]
+    documents = [chunk for _, chunk, _ in embedded_chunks]
+    embeddings = [embedding for _, _, embedding in embedded_chunks]
+    metadatas = [{"chunk_index": index} for index, _, _ in embedded_chunks]
 
     collection.add(
         ids=ids,
-        documents=chunks,
+        documents=documents,
         embeddings=embeddings,
         metadatas=metadatas,
     )
@@ -120,9 +165,12 @@ def retrieve_relevant_chunks(question: str, chunks: list[str], top_k: int) -> li
         return []
 
     collection = build_chunk_collection(chunks)
+    if collection is None:
+        return []
+
     result = collection.query(
         query_embeddings=[query_embedding],
-        n_results=min(top_k, len(chunks)),
+        n_results=min(top_k, collection.count()),
         include=["documents", "metadatas", "distances"],
     )
 
