@@ -1,11 +1,16 @@
+import os
+
 import chromadb
 import streamlit as st
+from openai import OpenAI, OpenAIError, RateLimitError
 
 
 MAX_PREVIEW_CHARS = 2000
 DEFAULT_CHUNK_SIZE = 500
 DEFAULT_CHUNK_OVERLAP = 100
 TOP_K = 3
+DEEPSEEK_MODEL = "deepseek-v4-flash"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 CONCEPTS = {
     "python": ["python", "脚本", "程序"],
@@ -141,11 +146,54 @@ def format_retrieved_context(retrieved_chunks: list[dict]) -> str:
     return "\n\n---\n\n".join(context_blocks)
 
 
+def build_rag_prompt(question: str, context: str, sources: str) -> str:
+    return f"""
+请只根据下面的资料回答问题。
+如果资料中没有相关信息，就回答：资料中没有找到相关信息。
+回答最后必须写一行“来源：{sources}”。
+
+问题：
+{question}
+
+资料：
+{context}
+""".strip()
+
+
+def generate_answer_with_deepseek(question: str, retrieved_chunks: list[dict]) -> str:
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY is not set.")
+
+    sources = ", ".join(f"Chunk {item['chunk_index']}" for item in retrieved_chunks)
+    context = format_retrieved_context(retrieved_chunks)
+    prompt = build_rag_prompt(question, context, sources)
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=DEEPSEEK_BASE_URL,
+    )
+
+    response = client.chat.completions.create(
+        model=DEEPSEEK_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": "你是一个严谨的 RAG 问答助手，只能根据给定资料回答。",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        stream=False,
+    )
+
+    return response.choices[0].message.content or ""
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day19: retrieve chunks with source references")
+    st.caption("Day20: generate answers from retrieved context with DeepSeek")
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -218,8 +266,8 @@ def main() -> None:
 
         st.write(
             "The app has embedded chunks with a manual keyword vector and retrieved "
-            "the most relevant chunks from Chroma. These chunks are the context "
-            "that a later LLM call will use to generate the final answer."
+            "the most relevant chunks from Chroma. DeepSeek will generate the final "
+            "answer from these chunks only."
         )
 
         st.write("Matched concepts:", ", ".join(matched_concepts))
@@ -234,6 +282,28 @@ def main() -> None:
                 f"Chunk {item['chunk_index']}" for item in retrieved_chunks
             )
         )
+
+        try:
+            with st.spinner("Generating answer with DeepSeek..."):
+                final_answer = generate_answer_with_deepseek(question, retrieved_chunks)
+        except RuntimeError:
+            st.warning(
+                "DEEPSEEK_API_KEY is not set in the current environment. "
+                "Set it before running the app to generate the final answer."
+            )
+            final_answer = ""
+        except RateLimitError as exc:
+            st.error("DeepSeek request reached the server, but quota or rate limit failed.")
+            st.exception(exc)
+            final_answer = ""
+        except OpenAIError as exc:
+            st.error("DeepSeek request failed.")
+            st.exception(exc)
+            final_answer = ""
+
+        if final_answer:
+            st.subheader("Final answer")
+            st.write(final_answer)
 
         st.subheader("Retrieved chunks")
         for rank, item in enumerate(retrieved_chunks, start=1):
