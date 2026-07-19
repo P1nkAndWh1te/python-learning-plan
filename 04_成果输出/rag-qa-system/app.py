@@ -1,9 +1,24 @@
+import chromadb
 import streamlit as st
 
 
 MAX_PREVIEW_CHARS = 2000
 DEFAULT_CHUNK_SIZE = 500
 DEFAULT_CHUNK_OVERLAP = 100
+TOP_K = 3
+
+CONCEPTS = {
+    "python": ["python", "脚本", "程序"],
+    "api": ["api", "接口", "调用", "请求"],
+    "git": ["git", "提交", "版本", "仓库"],
+    "rag": ["rag", "检索", "文档", "知识库"],
+    "data": ["数据", "csv", "表格", "pandas"],
+    "sql": ["sql", "数据库", "查询", "表"],
+    "embedding": ["embedding", "向量", "相似度"],
+    "chroma": ["chroma", "向量数据库"],
+    "llamaindex": ["llamaindex", "索引"],
+    "deepseek": ["deepseek", "大模型", "llm"],
+}
 
 
 def read_uploaded_text(uploaded_file) -> tuple[str, str]:
@@ -46,11 +61,74 @@ def split_text_into_chunks(text: str, chunk_size: int, chunk_overlap: int) -> li
     return chunks
 
 
+def embed_text(text: str) -> list[float]:
+    lowered_text = text.lower()
+    vector = []
+
+    for keywords in CONCEPTS.values():
+        score = 0
+        for keyword in keywords:
+            score += lowered_text.count(keyword.lower())
+        vector.append(float(score))
+
+    return vector
+
+
+def build_chunk_collection(chunks: list[str]):
+    client = chromadb.EphemeralClient()
+    collection = client.get_or_create_collection(name="uploaded_document_chunks")
+
+    ids = [f"chunk-{index}" for index in range(1, len(chunks) + 1)]
+    embeddings = [embed_text(chunk) for chunk in chunks]
+    metadatas = [{"chunk_index": index} for index in range(1, len(chunks) + 1)]
+
+    collection.add(
+        ids=ids,
+        documents=chunks,
+        embeddings=embeddings,
+        metadatas=metadatas,
+    )
+
+    return collection
+
+
+def retrieve_relevant_chunks(question: str, chunks: list[str], top_k: int) -> list[dict]:
+    if not chunks:
+        return []
+
+    query_embedding = embed_text(question)
+    if not any(query_embedding):
+        return []
+
+    collection = build_chunk_collection(chunks)
+    result = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=min(top_k, len(chunks)),
+        include=["documents", "metadatas", "distances"],
+    )
+
+    retrieved_chunks = []
+    for document, metadata, distance in zip(
+        result["documents"][0],
+        result["metadatas"][0],
+        result["distances"][0],
+    ):
+        retrieved_chunks.append(
+            {
+                "text": document,
+                "chunk_index": metadata["chunk_index"],
+                "distance": distance,
+            }
+        )
+
+    return retrieved_chunks
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day17: split uploaded documents into chunks")
+    st.caption("Day18: embed chunks and retrieve with Chroma")
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -111,11 +189,27 @@ def main() -> None:
             return
 
         st.subheader("Answer")
+        retrieved_chunks = retrieve_relevant_chunks(question, chunks, top_k=TOP_K)
+
+        if not retrieved_chunks:
+            st.warning(
+                "No relevant chunks found by the manual embedding. Try a question "
+                "with keywords such as Python, API, RAG, SQL, embedding, or Chroma."
+            )
+            return
+
         st.write(
-            "This is still a placeholder answer. The app has read the uploaded "
-            "document and split it into chunks. Day18-Day20 will connect embedding, "
-            "retrieval, and LLM generation."
+            "The app has embedded chunks with a manual keyword vector and retrieved "
+            "the most relevant chunks from Chroma. LLM generation starts later."
         )
+
+        st.subheader("Retrieved chunks")
+        for rank, item in enumerate(retrieved_chunks, start=1):
+            with st.expander(
+                f"Rank {rank} | Chunk {item['chunk_index']} | Distance {item['distance']:.4f}",
+                expanded=rank == 1,
+            ):
+                st.code(item["text"], language="markdown")
 
 
 if __name__ == "__main__":

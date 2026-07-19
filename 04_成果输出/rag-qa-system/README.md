@@ -2,7 +2,7 @@
 
 这是 Python/RAG 学习计划的正式项目成果目录。
 
-当前 Day17 版本实现 Streamlit 最小页面、TXT/Markdown 文档读取和固定长度文档切分。RAG 后端会在后续学习日逐步接入。
+当前 Day18 版本实现 Streamlit 页面、TXT/Markdown 文档读取、固定长度文档切分、教学版 embedding 和 Chroma 检索。LLM 生成会在后续学习日接入。
 
 ## 当前功能
 
@@ -12,14 +12,18 @@
 - 显示文档内容预览。
 - 将文档切分为多个 chunk。
 - 显示 chunk 总数、编号、长度和内容。
+- 使用关键词计数生成教学版 embedding。
+- 将 chunk 写入临时 Chroma collection。
+- 根据用户问题检索 Top 3 相关 chunk。
 - 输入问题。
 - 点击按钮提交问题。
-- 显示占位回答。
+- 显示检索到的 chunk。
 
 ## 当前限制
 
 - 暂不支持 PDF 解析。
-- 暂未接入 embedding、向量检索和 LLM 生成。
+- 当前 embedding 是教学版关键词向量，不是真实语义 embedding。
+- 暂未接入 LLM 生成。
 
 ## 运行方式
 
@@ -33,6 +37,6 @@ python -m streamlit run "04_成果输出/rag-qa-system/app.py"
 
 - Day16：读取上传文档内容。
 - Day17：文档切分。
-- Day18：接入 embedding 和 Chroma。
-- Day19：接入 LlamaIndex 检索。
+- Day18：接入教学版 embedding 和 Chroma。
+- Day19：优化检索结果展示和来源引用。
 - Day20：接入 DeepSeek 生成回答。
