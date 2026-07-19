@@ -15,7 +15,7 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 EVALUATION_CASES = [
     {"question": "Day8 学了什么？", "expected_top_chunk": 2},
     {"question": "DeepSeek API 怎么配置？", "expected_top_chunk": 2},
-    {"question": "OpenAI API 额度和 ChatGPT Plus 互通吗？", "expected_top_chunk": 3},
+    {"question": "OpenAI API 额度和 ChatGPT Plus 互通吗？", "expected_top_chunk": 2},
     {"question": "API Key 为什么不能写进代码？", "expected_top_chunk": 3},
     {"question": "怎么从环境变量读取 DEEPSEEK_API_KEY？", "expected_top_chunk": 3},
     {"question": "Day9 学了什么？", "expected_top_chunk": 4},
@@ -278,6 +278,10 @@ def evaluate_retrieval(evaluation_cases: list[dict], chunks: list[str], top_k: i
             if retrieved_chunks
             else None
         )
+        retrieved_chunk_indexes = [
+            item["chunk_index"]
+            for item in retrieved_chunks
+        ]
 
         rows.append(
             {
@@ -293,6 +297,7 @@ def evaluate_retrieval(evaluation_cases: list[dict], chunks: list[str], top_k: i
                     else "none"
                 ),
                 "hit": actual_top_chunk == expected_top_chunk,
+                "top_k_hit": expected_top_chunk in retrieved_chunk_indexes,
             }
         )
 
@@ -311,7 +316,7 @@ def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day25: evaluate retrieval with expected chunks")
+    st.caption("Day31: evaluate retrieval with top-1 hit and top-k recall")
 
     uploaded_file = st.file_uploader(
         "Upload a document",

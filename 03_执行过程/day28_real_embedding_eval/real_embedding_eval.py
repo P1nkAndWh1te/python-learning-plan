@@ -18,7 +18,7 @@ FAQ_PATH = (
     / "day10_dify_knowledge"
     / "python_learning_faq.md"
 )
-BASELINE_HIT_RATE = 70.0
+BASELINE_HIT_RATE = 60.0
 
 
 def load_rag_app_module():

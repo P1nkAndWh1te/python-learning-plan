@@ -20,8 +20,8 @@ FAQ_PATH = (
     / "python_learning_faq.md"
 )
 MODEL_NAME = "BAAI/bge-small-zh-v1.5"
-KEYWORD_BASELINE_HIT_RATE = 70.0
-CHROMA_DEFAULT_HIT_RATE = 40.0
+KEYWORD_BASELINE_HIT_RATE = 60.0
+CHROMA_DEFAULT_HIT_RATE = 50.0
 
 
 class BgeEmbeddingFunction:
