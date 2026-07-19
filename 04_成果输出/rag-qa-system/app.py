@@ -3,6 +3,7 @@ import os
 import chromadb
 import streamlit as st
 from openai import OpenAI, OpenAIError, RateLimitError
+from sentence_transformers import SentenceTransformer
 
 
 MAX_PREVIEW_CHARS = 2000
@@ -11,6 +12,13 @@ DEFAULT_CHUNK_OVERLAP = 50
 TOP_K = 3
 DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+BGE_MODEL_NAME = "BAAI/bge-small-zh-v1.5"
+KEYWORD_EMBEDDING_MODE = "Teaching keyword embedding"
+BGE_EMBEDDING_MODE = "BGE Chinese embedding"
+COLLECTION_NAMES = {
+    KEYWORD_EMBEDDING_MODE: "uploaded_document_chunks_keyword",
+    BGE_EMBEDDING_MODE: "uploaded_document_chunks_bge",
+}
 
 EVALUATION_CASES = [
     {"question": "Day8 学了什么？", "expected_top_chunk": 2},
@@ -139,22 +147,44 @@ def embed_text(text: str) -> list[float]:
     return vector
 
 
+@st.cache_resource(show_spinner="Loading BGE Chinese embedding model...")
+def load_bge_model() -> SentenceTransformer:
+    return SentenceTransformer(BGE_MODEL_NAME)
+
+
+def embed_text_with_bge(text: str) -> list[float]:
+    model = load_bge_model()
+    embedding = model.encode(
+        [text],
+        normalize_embeddings=True,
+        show_progress_bar=False,
+    )[0]
+    return embedding.tolist()
+
+
 def get_matched_concepts(text: str) -> list[str]:
     vector = embed_text(text)
     concepts = list(CONCEPTS.keys())
     return [concept for concept, value in zip(concepts, vector) if value > 0]
 
 
-def build_chunk_collection(chunks: list[str]):
+def embed_for_mode(text: str, embedding_mode: str) -> list[float]:
+    if embedding_mode == BGE_EMBEDDING_MODE:
+        return embed_text_with_bge(text)
+
+    return embed_text(text)
+
+
+def build_chunk_collection(chunks: list[str], embedding_mode: str):
     client = chromadb.EphemeralClient()
     collection = client.get_or_create_collection(
-        name="uploaded_document_chunks",
+        name=COLLECTION_NAMES[embedding_mode],
         metadata={"hnsw:space": "cosine"},
     )
 
     embedded_chunks = []
     for index, chunk in enumerate(chunks, start=1):
-        embedding = embed_text(chunk)
+        embedding = embed_for_mode(chunk, embedding_mode)
         if any(embedding):
             embedded_chunks.append((index, chunk, embedding))
 
@@ -176,15 +206,20 @@ def build_chunk_collection(chunks: list[str]):
     return collection
 
 
-def retrieve_relevant_chunks(question: str, chunks: list[str], top_k: int) -> list[dict]:
+def retrieve_relevant_chunks(
+    question: str,
+    chunks: list[str],
+    top_k: int,
+    embedding_mode: str = KEYWORD_EMBEDDING_MODE,
+) -> list[dict]:
     if not chunks:
         return []
 
-    query_embedding = embed_text(question)
+    query_embedding = embed_for_mode(question, embedding_mode)
     if not any(query_embedding):
         return []
 
-    collection = build_chunk_collection(chunks)
+    collection = build_chunk_collection(chunks, embedding_mode)
     if collection is None:
         return []
 
@@ -265,13 +300,23 @@ def generate_answer_with_deepseek(question: str, retrieved_chunks: list[dict]) -
     return response.choices[0].message.content or ""
 
 
-def evaluate_retrieval(evaluation_cases: list[dict], chunks: list[str], top_k: int) -> list[dict]:
+def evaluate_retrieval(
+    evaluation_cases: list[dict],
+    chunks: list[str],
+    top_k: int,
+    embedding_mode: str = KEYWORD_EMBEDDING_MODE,
+) -> list[dict]:
     rows = []
 
     for case in evaluation_cases:
         question = case["question"]
         expected_top_chunk = case["expected_top_chunk"]
-        retrieved_chunks = retrieve_relevant_chunks(question, chunks, top_k=top_k)
+        retrieved_chunks = retrieve_relevant_chunks(
+            question,
+            chunks,
+            top_k=top_k,
+            embedding_mode=embedding_mode,
+        )
         matched_concepts = get_matched_concepts(question)
         actual_top_chunk = (
             retrieved_chunks[0]["chunk_index"]
@@ -286,6 +331,7 @@ def evaluate_retrieval(evaluation_cases: list[dict], chunks: list[str], top_k: i
         rows.append(
             {
                 "question": question,
+                "embedding_mode": embedding_mode,
                 "expected_top_chunk": f"Chunk {expected_top_chunk}",
                 "matched_concepts": ", ".join(matched_concepts) or "none",
                 "top_chunks": ", ".join(
@@ -316,7 +362,20 @@ def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
     st.title("RAG QA System")
-    st.caption("Day31: evaluate retrieval with top-1 hit and top-k recall")
+    st.caption("Day32: compare teaching keyword embedding and BGE Chinese embedding")
+
+    embedding_mode = st.sidebar.radio(
+        "Embedding mode",
+        [KEYWORD_EMBEDDING_MODE, BGE_EMBEDDING_MODE],
+        help=(
+            "Teaching mode is fast and explainable. BGE mode uses a real Chinese "
+            "embedding model and may take longer on first load."
+        ),
+    )
+
+    st.sidebar.caption(f"Current mode: {embedding_mode}")
+    if embedding_mode == BGE_EMBEDDING_MODE:
+        st.sidebar.caption(f"Model: {BGE_MODEL_NAME}")
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -359,7 +418,12 @@ def main() -> None:
         st.caption(
             "Run fixed questions to inspect which chunks are retrieved before LLM generation."
         )
-        evaluation_rows = evaluate_retrieval(EVALUATION_CASES, chunks, top_k=TOP_K)
+        evaluation_rows = evaluate_retrieval(
+            EVALUATION_CASES,
+            chunks,
+            top_k=TOP_K,
+            embedding_mode=embedding_mode,
+        )
         hit_rate = calculate_hit_rate(evaluation_rows)
         st.write(f"Hit rate: {hit_rate:.0%}")
         st.dataframe(evaluation_rows, use_container_width=True, hide_index=True)
@@ -386,18 +450,23 @@ def main() -> None:
             return
 
         st.subheader("Answer")
-        retrieved_chunks = retrieve_relevant_chunks(question, chunks, top_k=TOP_K)
+        retrieved_chunks = retrieve_relevant_chunks(
+            question,
+            chunks,
+            top_k=TOP_K,
+            embedding_mode=embedding_mode,
+        )
         matched_concepts = get_matched_concepts(question)
 
         if not retrieved_chunks:
             st.warning(
-                "No relevant chunks found by the manual embedding. Try a question "
+                "No relevant chunks found by the selected embedding mode. Try a question "
                 "with keywords such as Python, API, RAG, SQL, embedding, or Chroma."
             )
             return
 
         st.write(
-            "The app has embedded chunks with a manual keyword vector and retrieved "
+            f"The app has embedded chunks with {embedding_mode} and retrieved "
             "the most relevant chunks from Chroma. DeepSeek will generate the final "
             "answer from these chunks only."
         )
