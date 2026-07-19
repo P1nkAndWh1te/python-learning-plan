@@ -7,6 +7,7 @@ Current scope:
 ```text
 GET /health
 services/chunking.py
+services/embeddings.py
 ```
 
 It does not replace the Streamlit app yet. The goal is to introduce a reusable
@@ -40,7 +41,7 @@ Expected response:
 
 The next backend steps are:
 
-- Extract embedding logic from Streamlit.
+- Extract vector store and retrieval logic from Streamlit.
 - Add document upload endpoint.
 - Add QA endpoint.
 - Add evaluation endpoint.
