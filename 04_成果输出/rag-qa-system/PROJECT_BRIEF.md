@@ -120,6 +120,25 @@ python -m streamlit run "04_成果输出/rag-qa-system/app.py"
 - 提问后可以看到检索上下文、来源 chunk 和最终回答。
 - BGE 模式在当前 FAQ 上 Top-1 结果优于教学版 embedding。
 
+## 截图材料
+
+截图已整理到：
+
+```text
+04_成果输出/rag-qa-system/screenshots/
+```
+
+当前包含：
+
+| File | Content |
+|---|---|
+| `01_app_upload.png` | 首页、上传区、问题输入和 embedding 模式 |
+| `02_chunks.png` | 文档上传信息和 chunk 切分结果 |
+| `03_retrieval_metrics.png` | Teaching keyword embedding 的检索评测 |
+| `04_bge_metrics.png` | BGE Chinese embedding 的检索评测 |
+| `05_answer_context.png` | 问题、检索说明和上下文 |
+| `06_answer_sources.png` | Sources 和 Final answer |
+
 ## 当前限制
 
 - 暂不支持 PDF。
@@ -130,9 +149,7 @@ python -m streamlit run "04_成果输出/rag-qa-system/app.py"
 
 ## 下一步
 
-- 补充页面截图。
 - 扩展更真实的测试文档。
 - 评估是否加入 rerank。
 - 评估是否做 Chroma 持久化。
 - 将项目描述整理成简历项目经历。
-
