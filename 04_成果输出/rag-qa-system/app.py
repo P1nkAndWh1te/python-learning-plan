@@ -358,6 +358,14 @@ def calculate_hit_rate(evaluation_rows: list[dict]) -> float:
     return hit_count / len(evaluation_rows)
 
 
+def calculate_top_k_hit_rate(evaluation_rows: list[dict]) -> float:
+    if not evaluation_rows:
+        return 0.0
+
+    hit_count = sum(1 for row in evaluation_rows if row["top_k_hit"])
+    return hit_count / len(evaluation_rows)
+
+
 def main() -> None:
     st.set_page_config(page_title="RAG QA System", page_icon="RAG", layout="wide")
 
@@ -376,6 +384,10 @@ def main() -> None:
     st.sidebar.caption(f"Current mode: {embedding_mode}")
     if embedding_mode == BGE_EMBEDDING_MODE:
         st.sidebar.caption(f"Model: {BGE_MODEL_NAME}")
+        st.sidebar.info(
+            "BGE mode loads a local Chinese embedding model. The first evaluation "
+            "or question may take longer."
+        )
 
     uploaded_file = st.file_uploader(
         "Upload a document",
@@ -425,7 +437,10 @@ def main() -> None:
             embedding_mode=embedding_mode,
         )
         hit_rate = calculate_hit_rate(evaluation_rows)
-        st.write(f"Hit rate: {hit_rate:.0%}")
+        top_k_hit_rate = calculate_top_k_hit_rate(evaluation_rows)
+        metric_columns = st.columns(2)
+        metric_columns[0].metric("Top-1 hit", f"{hit_rate:.0%}")
+        metric_columns[1].metric("Top-k recall", f"{top_k_hit_rate:.0%}")
         st.dataframe(evaluation_rows, use_container_width=True, hide_index=True)
 
     question = st.text_area(
