@@ -9,6 +9,7 @@ data.json
 json_file.json
 students.csv
 chroma_store/
+04_成果输出/rag-qa-system/backend/storage/chroma_db/
 
 # Local editor files
 .vscode/

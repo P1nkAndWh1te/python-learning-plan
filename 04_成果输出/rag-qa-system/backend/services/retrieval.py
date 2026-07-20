@@ -1,3 +1,6 @@
+import hashlib
+from pathlib import Path
+
 import chromadb
 
 from backend.services.embeddings import (
@@ -7,12 +10,31 @@ from backend.services.embeddings import (
 )
 
 
-def build_chunk_collection(chunks: list[str], embedding_mode: str):
-    client = chromadb.EphemeralClient()
-    collection = client.get_or_create_collection(
-        name=COLLECTION_NAMES[embedding_mode],
+CHROMA_DB_PATH = Path(__file__).resolve().parents[1] / "storage" / "chroma_db"
+
+
+def get_chroma_client():
+    CHROMA_DB_PATH.mkdir(parents=True, exist_ok=True)
+    return chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
+
+
+def get_collection_name(chunks: list[str], embedding_mode: str) -> str:
+    source_text = "\n\n".join(chunks)
+    digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()[:12]
+    return f"{COLLECTION_NAMES[embedding_mode]}_{digest}"
+
+
+def get_chunk_collection(client, collection_name: str):
+    return client.get_or_create_collection(
+        name=collection_name,
         metadata={"hnsw:space": "cosine"},
     )
+
+
+def build_chunk_collection(chunks: list[str], embedding_mode: str):
+    client = get_chroma_client()
+    collection_name = get_collection_name(chunks, embedding_mode)
+    collection = get_chunk_collection(client, collection_name)
 
     embedded_chunks = []
     for index, chunk in enumerate(chunks, start=1):
@@ -28,7 +50,7 @@ def build_chunk_collection(chunks: list[str], embedding_mode: str):
     embeddings = [embedding for _, _, embedding in embedded_chunks]
     metadatas = [{"chunk_index": index} for index, _, _ in embedded_chunks]
 
-    collection.add(
+    collection.upsert(
         ids=ids,
         documents=documents,
         embeddings=embeddings,
