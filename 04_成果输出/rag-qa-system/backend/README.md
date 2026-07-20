@@ -8,6 +8,7 @@ Current scope:
 GET /health
 services/chunking.py
 services/embeddings.py
+services/retrieval.py
 ```
 
 It does not replace the Streamlit app yet. The goal is to introduce a reusable
@@ -41,7 +42,7 @@ Expected response:
 
 The next backend steps are:
 
-- Extract vector store and retrieval logic from Streamlit.
+- Switch Chroma from EphemeralClient to PersistentClient.
 - Add document upload endpoint.
 - Add QA endpoint.
 - Add evaluation endpoint.
