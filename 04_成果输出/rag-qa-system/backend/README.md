@@ -7,6 +7,7 @@ Current scope:
 ```text
 GET /health
 POST /documents
+POST /documents/upload
 POST /qa
 POST /answer
 POST /evaluation
@@ -66,6 +67,26 @@ embedding_mode
 collection_name
 chunk_count
 stored_chunk_count
+```
+
+## Upload a Document File
+
+```powershell
+$form = @{
+  embedding_mode = "Teaching keyword embedding"
+  chunk_size = "350"
+  chunk_overlap = "50"
+  file = Get-Item "02_资料与素材/day10_dify_knowledge/python_learning_faq.md"
+}
+
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/documents/upload" -Method Post -Form $form
+```
+
+Current file support:
+
+```text
+.txt
+.md
 ```
 
 ## Query a Document
@@ -132,6 +153,7 @@ Current automated coverage:
 
 ```text
 POST /documents
+POST /documents/upload markdown upload and unsupported file type
 POST /qa with vector, bm25, and rrf retrieval modes
 POST /answer missing API key and unknown retrieval mode
 POST /evaluation with vector, bm25, and rrf retrieval modes
@@ -166,6 +188,4 @@ rows
 
 ## Next
 
-The next backend steps are:
-
-- Add optional multipart file upload endpoint.
+The next backend step is to expand the evaluation set beyond the current FAQ sample.

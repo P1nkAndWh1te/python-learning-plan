@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from openai import OpenAIError, RateLimitError
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,7 @@ from backend.services.rrf import retrieve_relevant_chunks_rrf
 
 DEFAULT_CHUNK_SIZE = 350
 DEFAULT_CHUNK_OVERLAP = 50
+SUPPORTED_UPLOAD_EXTENSIONS = {".txt", ".md"}
 
 
 class DocumentRequest(BaseModel):
@@ -130,14 +131,63 @@ def health_check() -> dict[str, str]:
 
 @app.post("/documents", response_model=DocumentResponse)
 def create_document(request: DocumentRequest) -> DocumentResponse:
-    if request.embedding_mode not in COLLECTION_NAMES:
+    return create_document_from_text(
+        text=request.text,
+        embedding_mode=request.embedding_mode,
+        chunk_size=request.chunk_size,
+        chunk_overlap=request.chunk_overlap,
+    )
+
+
+@app.post("/documents/upload", response_model=DocumentResponse)
+async def upload_document(
+    file: UploadFile = File(...),
+    embedding_mode: str = Form(KEYWORD_EMBEDDING_MODE),
+    chunk_size: int = Form(DEFAULT_CHUNK_SIZE),
+    chunk_overlap: int = Form(DEFAULT_CHUNK_OVERLAP),
+) -> DocumentResponse:
+    filename = file.filename or ""
+    extension = ""
+    if "." in filename:
+        extension = "." + filename.rsplit(".", maxsplit=1)[-1].lower()
+
+    if extension not in SUPPORTED_UPLOAD_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="unsupported file type")
+
+    raw_bytes = await file.read()
+    text = decode_uploaded_text(raw_bytes)
+    return create_document_from_text(
+        text=text,
+        embedding_mode=embedding_mode,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+
+
+def decode_uploaded_text(raw_bytes: bytes) -> str:
+    for encoding in ("utf-8", "gbk"):
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    return raw_bytes.decode("utf-8", errors="replace")
+
+
+def create_document_from_text(
+    text: str,
+    embedding_mode: str,
+    chunk_size: int,
+    chunk_overlap: int,
+) -> DocumentResponse:
+    if embedding_mode not in COLLECTION_NAMES:
         raise HTTPException(status_code=400, detail="unsupported embedding mode")
 
     try:
         chunks = split_text_into_chunks(
-            request.text,
-            chunk_size=request.chunk_size,
-            chunk_overlap=request.chunk_overlap,
+            text,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -145,16 +195,16 @@ def create_document(request: DocumentRequest) -> DocumentResponse:
     if not chunks:
         raise HTTPException(status_code=400, detail="document text is empty")
 
-    collection = build_chunk_collection(chunks, request.embedding_mode)
+    collection = build_chunk_collection(chunks, embedding_mode)
     if collection is None:
         raise HTTPException(status_code=400, detail="document has no embeddable chunks")
 
-    collection_name = get_collection_name(chunks, request.embedding_mode)
+    collection_name = get_collection_name(chunks, embedding_mode)
     document_id = collection_name.rsplit("_", maxsplit=1)[-1]
 
     return DocumentResponse(
         document_id=document_id,
-        embedding_mode=request.embedding_mode,
+        embedding_mode=embedding_mode,
         collection_name=collection_name,
         chunk_count=len(chunks),
         stored_chunk_count=collection.count(),

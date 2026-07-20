@@ -7,7 +7,7 @@
 DocuAsk 是一个本地文档 RAG 问答系统原型，已经从早期 Streamlit 单页面逐步升级为：
 
 ```text
-Streamlit UI + FastAPI backend + reusable RAG services + Chroma persistent storage + LLM answer generation + retrieval evaluation
+Streamlit UI + FastAPI backend + file upload + reusable RAG services + Chroma persistent storage + LLM answer generation + retrieval evaluation
 ```
 
 当前重点解决三个问题：
@@ -45,7 +45,8 @@ Streamlit UI + FastAPI backend + reusable RAG services + Chroma persistent stora
 
 ```mermaid
 flowchart TD
-    A["TXT / Markdown document"] --> B["split_text_into_chunks"]
+    A["TXT / Markdown upload"] --> N["decode_uploaded_text"]
+    N --> B["split_text_into_chunks"]
     B --> C["embed_for_mode"]
     C --> D["Chroma PersistentClient"]
     E["User question"] --> F["retrieval_mode"]
@@ -86,6 +87,7 @@ flowchart TD
 |---|---|
 | `GET /health` | 后端健康检查 |
 | `POST /documents` | 文档切分、embedding、写入 Chroma |
+| `POST /documents/upload` | 接收 `.txt/.md` 文件并复用文档入库流程 |
 | `POST /qa` | 对已入库 collection 执行 Top-k 检索 |
 | `POST /answer` | 检索 chunks 后调用 LLM 生成 answer 和 sources |
 | `POST /evaluation` | 用固定问题集评估检索模式 |
@@ -163,13 +165,12 @@ uploaded_document_chunks_bge_v3_xxxxxxxxxxxx
 更准确的当前表述：
 
 ```text
-DocuAsk 已完成本地文档上传、切分、向量入库、三种检索模式、来源上下文展示、LLM answer 生成和固定问题检索评测。
+DocuAsk 已完成本地 `.txt/.md` 文件上传、切分、向量入库、三种检索模式、来源上下文展示、LLM answer 生成和固定问题检索评测。
 ```
 
 ## 下一步
 
 建议下一阶段优先做：
 
-1. 支持上传文件接口，而不是只接收 `text` 字段。
-2. 扩展评测集，从 10 题小样本升级为更真实的多文档测试。
-3. 再评估是否引入 rerank 或 Docker Compose。
+1. 扩展评测集，从 10 题小样本升级为更真实的多文档测试。
+2. 再评估是否引入 rerank 或 Docker Compose。

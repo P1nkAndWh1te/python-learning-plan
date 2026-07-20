@@ -28,6 +28,57 @@ def test_documents_endpoint_indexes_faq_document():
     assert payload["collection_name"].startswith("uploaded_document_chunks_keyword_")
 
 
+def test_documents_upload_endpoint_indexes_markdown_file():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/documents/upload",
+        data={
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": "350",
+            "chunk_overlap": "50",
+        },
+        files={
+            "file": (
+                "python_learning_faq.md",
+                text.encode("utf-8"),
+                "text/markdown",
+            )
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["embedding_mode"] == KEYWORD_EMBEDDING_MODE
+    assert payload["chunk_count"] == 6
+    assert payload["stored_chunk_count"] == 6
+
+
+def test_documents_upload_endpoint_rejects_unsupported_file_type():
+    client = TestClient(app)
+
+    response = client.post(
+        "/documents/upload",
+        data={
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": "350",
+            "chunk_overlap": "50",
+        },
+        files={
+            "file": (
+                "document.pdf",
+                b"%PDF-1.4 fake",
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "unsupported file type"
+
+
 def test_qa_endpoint_retrieves_expected_chunk():
     client = TestClient(app)
     text = FAQ_PATH.read_text(encoding="utf-8")

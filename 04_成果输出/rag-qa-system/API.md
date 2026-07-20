@@ -2,7 +2,7 @@
 
 本文档记录 DocuAsk 当前 FastAPI 后端已经验证的接口。
 
-当前后端定位：为本地文档 RAG 问答系统提供可复用的文档入库、检索问答、LLM answer 生成和检索评测能力。
+当前后端定位：为本地文档 RAG 问答系统提供可复用的文档入库、文件上传、检索问答、LLM answer 生成和检索评测能力。
 
 ## 启动后端
 
@@ -62,6 +62,41 @@ stored_chunk_count
 - `collection_name` 是后续 `/qa` 查询的关键参数。
 - 当前支持 `Teaching keyword embedding` 和 `BGE Chinese embedding`。
 - Chroma 数据保存在 `04_成果输出/rag-qa-system/backend/storage/chroma_db_v2/`，该目录不提交到 Git。
+
+## POST /documents/upload
+
+用途：上传 `.txt` 或 `.md` 文件，并复用文档入库流程写入 Chroma。
+
+请求类型：
+
+```text
+multipart/form-data
+```
+
+字段：
+
+| Field | Type | Required | 说明 |
+|---|---|---|---|
+| `file` | file | yes | `.txt` 或 `.md` 文件 |
+| `embedding_mode` | form string | no | 默认 `Teaching keyword embedding` |
+| `chunk_size` | form int | no | 默认 `350` |
+| `chunk_overlap` | form int | no | 默认 `50` |
+
+响应字段与 `POST /documents` 相同：
+
+```text
+document_id
+embedding_mode
+collection_name
+chunk_count
+stored_chunk_count
+```
+
+说明：
+
+- 当前只接受 `.txt` 和 `.md`。
+- 当前按 `utf-8`、`gbk` 顺序尝试解码。
+- 不支持 PDF / Word。
 
 ## POST /qa
 
@@ -191,6 +226,7 @@ rows
 |---|---:|
 | 不支持的 embedding mode | 400 |
 | 不支持的 retrieval mode | 400 |
+| `/documents/upload` 不支持的文件后缀 | 400 |
 | 空文档 | 400 |
 | 文档没有可入库 chunk | 400 |
 | 查询不存在的 collection | 404 |
@@ -210,6 +246,7 @@ python -m pytest -q
 
 ```text
 POST /documents
+POST /documents/upload: markdown upload and unsupported file type
 POST /qa: vector / bm25 / rrf
 POST /answer: missing API key and unknown retrieval mode
 POST /evaluation: vector / bm25 / rrf

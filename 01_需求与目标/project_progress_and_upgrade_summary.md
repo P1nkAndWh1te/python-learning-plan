@@ -2,7 +2,7 @@
 
 **日期**：2026年7月20日
 **项目名称**：DocuAsk / RAG QA System  
-**当前阶段**：DocuAsk v2 工程化升级已完成 FastAPI、持久化、自动评测、BM25/RRF、API/架构文档和 answer endpoint
+**当前阶段**：DocuAsk v2 工程化升级已完成 FastAPI、文件上传、持久化、自动评测、BM25/RRF、API/架构文档和 answer endpoint
 **当前最新提交**：以 GitHub `main` 分支为准
 
 ---
@@ -48,7 +48,7 @@ DocuAsk 当前是一个本地文档 RAG 问答系统原型，用于验证完整 
 - BGE Chinese embedding。
 - Chroma Top 3 检索。
 - Chroma 本地 PersistentClient 持久化。
-- FastAPI `/health`、`/documents`、`/qa`、`/answer`、`/evaluation`。
+- FastAPI `/health`、`/documents`、`/documents/upload`、`/qa`、`/answer`、`/evaluation`。
 - `/qa` 和 `/evaluation` 支持 `vector`、`bm25`、`rrf` 三种模式。
 - DeepSeek OpenAI-compatible LLM API 回答生成。
 - 来源 chunk 展示。
@@ -64,6 +64,7 @@ DocuAsk 当前是一个本地文档 RAG 问答系统原型，用于验证完整 
 | UI | Streamlit |
 | Vector DB | Chroma |
 | Backend API | FastAPI / Uvicorn |
+| File upload | python-multipart |
 | Teaching embedding | 手写关键词向量 |
 | Real embedding | BAAI/bge-small-zh-v1.5 |
 | Embedding runtime | Sentence Transformers |
