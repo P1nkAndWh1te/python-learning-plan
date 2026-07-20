@@ -10,6 +10,7 @@ POST /documents
 POST /qa
 POST /evaluation
 services/chunking.py
+services/bm25.py
 services/embeddings.py
 services/evaluation.py
 services/retrieval.py
