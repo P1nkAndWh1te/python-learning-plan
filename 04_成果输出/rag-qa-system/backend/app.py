@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from openai import OpenAIError, RateLimitError
 from pydantic import BaseModel, Field
 
 from backend.services.bm25 import retrieve_relevant_chunks_bm25
@@ -10,6 +11,11 @@ from backend.services.evaluation import (
     calculate_hit_rate,
     calculate_top_k_hit_rate,
     evaluate_retrieval,
+)
+from backend.services.generation import (
+    MissingApiKeyError,
+    format_sources,
+    generate_answer_with_deepseek,
 )
 from backend.services.retrieval import (
     build_chunk_collection,
@@ -64,6 +70,15 @@ class QaResponse(BaseModel):
     top_k: int
     retrieved_chunks: list[RetrievedChunk]
     context: str
+
+
+class AnswerRequest(QaRequest):
+    pass
+
+
+class AnswerResponse(QaResponse):
+    answer: str
+    sources: str
 
 
 class EvaluationRequest(BaseModel):
@@ -154,34 +169,72 @@ def query_document(request: QaRequest) -> QaResponse:
     if request.retrieval_mode not in RETRIEVAL_MODES:
         raise HTTPException(status_code=400, detail="unsupported retrieval mode")
 
+    retrieved_chunks = retrieve_chunks_for_request(request)
+
+    if retrieved_chunks is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+
+    return build_qa_response(request, retrieved_chunks)
+
+
+@app.post("/answer", response_model=AnswerResponse)
+def answer_document(request: AnswerRequest) -> AnswerResponse:
+    if request.embedding_mode not in COLLECTION_NAMES:
+        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+
+    if request.retrieval_mode not in RETRIEVAL_MODES:
+        raise HTTPException(status_code=400, detail="unsupported retrieval mode")
+
+    retrieved_chunks = retrieve_chunks_for_request(request)
+    if retrieved_chunks is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+
+    try:
+        answer = generate_answer_with_deepseek(request.question, retrieved_chunks)
+    except MissingApiKeyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RateLimitError as exc:
+        raise HTTPException(status_code=429, detail="LLM quota or rate limit failed") from exc
+    except OpenAIError as exc:
+        raise HTTPException(status_code=502, detail="LLM request failed") from exc
+
+    qa_response = build_qa_response(request, retrieved_chunks)
+    return AnswerResponse(
+        **qa_response.model_dump(),
+        answer=answer,
+        sources=format_sources(retrieved_chunks),
+    )
+
+
+def retrieve_chunks_for_request(request: QaRequest) -> list[dict] | None:
     if request.retrieval_mode == "vector":
-        retrieved_chunks = retrieve_relevant_chunks_from_collection(
+        return retrieve_relevant_chunks_from_collection(
             request.collection_name,
             request.question,
             top_k=request.top_k,
             embedding_mode=request.embedding_mode,
         )
-    else:
-        chunks = get_chunks_from_collection(request.collection_name)
-        if chunks is None:
-            retrieved_chunks = None
-        elif request.retrieval_mode == "bm25":
-            retrieved_chunks = retrieve_relevant_chunks_bm25(
-                request.question,
-                chunks,
-                top_k=request.top_k,
-            )
-        else:
-            retrieved_chunks = retrieve_relevant_chunks_rrf(
-                request.question,
-                chunks,
-                top_k=request.top_k,
-                embedding_mode=request.embedding_mode,
-            )
 
-    if retrieved_chunks is None:
-        raise HTTPException(status_code=404, detail="collection not found")
+    chunks = get_chunks_from_collection(request.collection_name)
+    if chunks is None:
+        return None
 
+    if request.retrieval_mode == "bm25":
+        return retrieve_relevant_chunks_bm25(
+            request.question,
+            chunks,
+            top_k=request.top_k,
+        )
+
+    return retrieve_relevant_chunks_rrf(
+        request.question,
+        chunks,
+        top_k=request.top_k,
+        embedding_mode=request.embedding_mode,
+    )
+
+
+def build_qa_response(request: QaRequest, retrieved_chunks: list[dict]) -> QaResponse:
     return QaResponse(
         question=request.question,
         embedding_mode=request.embedding_mode,

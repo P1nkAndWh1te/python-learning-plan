@@ -178,6 +178,67 @@ def test_qa_endpoint_returns_400_for_unknown_retrieval_mode():
     assert response.status_code == 400
 
 
+def test_answer_endpoint_returns_503_when_api_key_is_missing(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    document_response = client.post(
+        "/documents",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+        },
+    )
+    collection_name = document_response.json()["collection_name"]
+
+    response = client.post(
+        "/answer",
+        json={
+            "collection_name": collection_name,
+            "question": "RAG 的基本流程是什么？",
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "top_k": 3,
+            "retrieval_mode": "vector",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "DEEPSEEK_API_KEY is not set."
+
+
+def test_answer_endpoint_returns_400_for_unknown_retrieval_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    document_response = client.post(
+        "/documents",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+        },
+    )
+    collection_name = document_response.json()["collection_name"]
+
+    response = client.post(
+        "/answer",
+        json={
+            "collection_name": collection_name,
+            "question": "RAG 的基本流程是什么？",
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "top_k": 3,
+            "retrieval_mode": "unknown",
+        },
+    )
+
+    assert response.status_code == 400
+
+
 def test_evaluation_endpoint_returns_fixed_metrics():
     client = TestClient(app)
     text = FAQ_PATH.read_text(encoding="utf-8")

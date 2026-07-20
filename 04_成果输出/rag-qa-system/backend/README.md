@@ -8,11 +8,13 @@ Current scope:
 GET /health
 POST /documents
 POST /qa
+POST /answer
 POST /evaluation
 services/chunking.py
 services/bm25.py
 services/embeddings.py
 services/evaluation.py
+services/generation.py
 services/retrieval.py
 services/rrf.py
 storage/chroma_db*/ (local, ignored)
@@ -92,6 +94,32 @@ retrieved_chunks
 context
 ```
 
+## Generate an Answer
+
+Use the `collection_name` returned by `POST /documents`.
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/answer" -Method Post -ContentType "application/json" -Body '{
+  "collection_name": "uploaded_document_chunks_keyword_xxxxxxxxxxxx",
+  "question": "RAG 的基本流程是什么？",
+  "embedding_mode": "Teaching keyword embedding",
+  "top_k": 3,
+  "retrieval_mode": "rrf"
+}'
+```
+
+Expected fields:
+
+```text
+question
+retrieved_chunks
+context
+answer
+sources
+```
+
+If `DEEPSEEK_API_KEY` is not set, the endpoint returns 503.
+
 ## Test
 
 From the project root:
@@ -105,6 +133,7 @@ Current automated coverage:
 ```text
 POST /documents
 POST /qa with vector, bm25, and rrf retrieval modes
+POST /answer missing API key and unknown retrieval mode
 POST /evaluation with vector, bm25, and rrf retrieval modes
 404 for missing collection
 400 for unknown retrieval mode
@@ -139,5 +168,4 @@ rows
 
 The next backend steps are:
 
-- Add optional LLM generation.
 - Add optional multipart file upload endpoint.

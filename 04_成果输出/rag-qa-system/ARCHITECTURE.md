@@ -7,7 +7,7 @@
 DocuAsk 是一个本地文档 RAG 问答系统原型，已经从早期 Streamlit 单页面逐步升级为：
 
 ```text
-Streamlit UI + FastAPI backend + reusable RAG services + Chroma persistent storage + retrieval evaluation
+Streamlit UI + FastAPI backend + reusable RAG services + Chroma persistent storage + LLM answer generation + retrieval evaluation
 ```
 
 当前重点解决三个问题：
@@ -30,6 +30,7 @@ Streamlit UI + FastAPI backend + reusable RAG services + Chroma persistent stora
       chunking.py
       embeddings.py
       retrieval.py
+      generation.py
       bm25.py
       rrf.py
       evaluation.py
@@ -55,7 +56,7 @@ flowchart TD
     H --> J
     I --> J
     J --> K["Context with Chunk sources"]
-    K --> L["Streamlit DeepSeek generation"]
+    K --> L["DeepSeek generation"]
     J --> M["/evaluation metrics"]
 ```
 
@@ -64,8 +65,8 @@ flowchart TD
 - `vector` 使用 Chroma cosine distance。
 - `bm25` 使用本地轻量 BM25 关键词检索。
 - `rrf` 融合 vector ranking 和 BM25 ranking。
-- Streamlit 页面当前负责用户交互和 DeepSeek 生成。
-- FastAPI 后端当前负责文档入库、检索问答和检索评测。
+- Streamlit 页面当前负责用户交互。
+- FastAPI 后端当前负责文档入库、检索问答、LLM answer 生成和检索评测。
 
 ## Service 边界
 
@@ -74,6 +75,7 @@ flowchart TD
 | `chunking.py` | 文档切分，优先按 Markdown `##` 标题切分，否则使用固定长度和 overlap |
 | `embeddings.py` | 管理 Teaching keyword embedding 和 BGE Chinese embedding |
 | `retrieval.py` | 管理 Chroma 持久化、collection 命名、向量检索和上下文格式化 |
+| `generation.py` | 管理 RAG prompt、DeepSeek 调用和 sources 格式化 |
 | `bm25.py` | 提供关键词检索 baseline |
 | `rrf.py` | 融合向量检索和 BM25 排名 |
 | `evaluation.py` | 固定 10 题检索评测，计算 Top-1 hit 和 Top-k recall |
@@ -85,6 +87,7 @@ flowchart TD
 | `GET /health` | 后端健康检查 |
 | `POST /documents` | 文档切分、embedding、写入 Chroma |
 | `POST /qa` | 对已入库 collection 执行 Top-k 检索 |
+| `POST /answer` | 检索 chunks 后调用 LLM 生成 answer 和 sources |
 | `POST /evaluation` | 用固定问题集评估检索模式 |
 
 ## 检索模式
@@ -155,19 +158,18 @@ uploaded_document_chunks_bge_v3_xxxxxxxxxxxx
 - 支持权限管理或多租户知识库。
 - 大规模评测或压测完成。
 - 已接入 rerank 模型。
-- 后端已经生成最终 LLM answer。
+- 大规模线上 LLM 调用稳定性验证。
 
 更准确的当前表述：
 
 ```text
-DocuAsk 已完成本地文档上传、切分、向量入库、三种检索模式、来源上下文展示和固定问题检索评测。
+DocuAsk 已完成本地文档上传、切分、向量入库、三种检索模式、来源上下文展示、LLM answer 生成和固定问题检索评测。
 ```
 
 ## 下一步
 
 建议下一阶段优先做：
 
-1. 在 FastAPI 中增加可选 LLM 生成参数或独立 answer endpoint。
-2. 支持上传文件接口，而不是只接收 `text` 字段。
-3. 扩展评测集，从 10 题小样本升级为更真实的多文档测试。
-4. 再评估是否引入 rerank 或 Docker Compose。
+1. 支持上传文件接口，而不是只接收 `text` 字段。
+2. 扩展评测集，从 10 题小样本升级为更真实的多文档测试。
+3. 再评估是否引入 rerank 或 Docker Compose。

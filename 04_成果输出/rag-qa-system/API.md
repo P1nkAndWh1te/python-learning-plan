@@ -2,7 +2,7 @@
 
 本文档记录 DocuAsk 当前 FastAPI 后端已经验证的接口。
 
-当前后端定位：为本地文档 RAG 问答系统提供可复用的文档入库、检索问答和检索评测能力。LLM 生成仍由 Streamlit 页面侧调用 DeepSeek OpenAI-compatible API，后端接口当前重点是检索链路和评测链路。
+当前后端定位：为本地文档 RAG 问答系统提供可复用的文档入库、检索问答、LLM answer 生成和检索评测能力。
 
 ## 启动后端
 
@@ -107,6 +107,43 @@ context
 | `bm25` | `score` | BM25 关键词得分，越高越相关 |
 | `rrf` | `rrf_score` | RRF 融合排序得分，越高排序越靠前 |
 
+## POST /answer
+
+用途：先按指定 `retrieval_mode` 检索相关 chunks，再调用 DeepSeek OpenAI-compatible API 生成最终回答。
+
+请求体：
+
+```json
+{
+  "collection_name": "uploaded_document_chunks_keyword_v3_xxxxxxxxxxxx",
+  "question": "RAG 的基本流程是什么？",
+  "embedding_mode": "Teaching keyword embedding",
+  "top_k": 3,
+  "retrieval_mode": "rrf"
+}
+```
+
+响应字段：
+
+```text
+question
+embedding_mode
+collection_name
+retrieval_mode
+top_k
+retrieved_chunks
+context
+answer
+sources
+```
+
+说明：
+
+- `answer` 由 DeepSeek 基于 `context` 生成。
+- `sources` 记录本次回答使用的 chunk 编号。
+- 如果没有设置 `DEEPSEEK_API_KEY`，接口返回 503。
+- 自动化测试不调用真实 LLM API，只验证无 key 分支。
+
 ## POST /evaluation
 
 用途：用固定 10 题评测当前文档切分和检索模式的召回效果。
@@ -157,6 +194,9 @@ rows
 | 空文档 | 400 |
 | 文档没有可入库 chunk | 400 |
 | 查询不存在的 collection | 404 |
+| `/answer` 缺少 `DEEPSEEK_API_KEY` | 503 |
+| `/answer` LLM quota / rate limit | 429 |
+| `/answer` LLM 请求失败 | 502 |
 
 ## 自动化验证
 
@@ -171,6 +211,7 @@ python -m pytest -q
 ```text
 POST /documents
 POST /qa: vector / bm25 / rrf
+POST /answer: missing API key and unknown retrieval mode
 POST /evaluation: vector / bm25 / rrf
 missing collection -> 404
 unknown retrieval mode -> 400

@@ -2,7 +2,7 @@
 
 **日期**：2026年7月20日
 **项目名称**：DocuAsk / RAG QA System  
-**当前阶段**：DocuAsk v2 工程化升级已完成 FastAPI、持久化、自动评测、BM25/RRF 和 API/架构文档
+**当前阶段**：DocuAsk v2 工程化升级已完成 FastAPI、持久化、自动评测、BM25/RRF、API/架构文档和 answer endpoint
 **当前最新提交**：以 GitHub `main` 分支为准
 
 ---
@@ -48,7 +48,7 @@ DocuAsk 当前是一个本地文档 RAG 问答系统原型，用于验证完整 
 - BGE Chinese embedding。
 - Chroma Top 3 检索。
 - Chroma 本地 PersistentClient 持久化。
-- FastAPI `/health`、`/documents`、`/qa`、`/evaluation`。
+- FastAPI `/health`、`/documents`、`/qa`、`/answer`、`/evaluation`。
 - `/qa` 和 `/evaluation` 支持 `vector`、`bm25`、`rrf` 三种模式。
 - DeepSeek OpenAI-compatible LLM API 回答生成。
 - 来源 chunk 展示。
@@ -146,13 +146,13 @@ BGE 中文 embedding 的 Top-1 排序效果更好。
 - 支持 PDF。
 - 已接入 rerank。
 - 已完成大规模评测。
-- 已完成包含 LLM 生成的完整后端服务。
+- 已完成生产级大规模 LLM 后端服务。
 - 使用 LlamaIndex 统一主链路。
 - 完整生产级 Hybrid Search。
 
 当前真实限制：
 
-- FastAPI 后端当前重点是检索和评测，LLM 生成仍在 Streamlit 页面侧调用。
+- FastAPI 后端已支持 `/answer`，但真实 LLM 调用仍依赖 API Key、网络、额度和模型服务状态。
 - Chroma 持久化目录是本地运行数据，不提交到 GitHub。
 - 当前评测集只有 10 个固定问题，规模较小。
 - 当前已做 BM25 / RRF baseline，但未做 rerank。

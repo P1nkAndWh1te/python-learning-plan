@@ -1,9 +1,8 @@
-import os
 import sys
 from pathlib import Path
 
 import streamlit as st
-from openai import OpenAI, OpenAIError, RateLimitError
+from openai import OpenAIError, RateLimitError
 
 
 APP_ROOT = Path(__file__).resolve().parent
@@ -23,6 +22,10 @@ from backend.services.evaluation import (
     calculate_top_k_hit_rate,
     evaluate_retrieval,
 )
+from backend.services.generation import (
+    MissingApiKeyError,
+    generate_answer_with_deepseek,
+)
 from backend.services.retrieval import (
     format_retrieved_context,
     retrieve_relevant_chunks,
@@ -33,8 +36,6 @@ MAX_PREVIEW_CHARS = 2000
 DEFAULT_CHUNK_SIZE = 350
 DEFAULT_CHUNK_OVERLAP = 50
 TOP_K = 3
-DEEPSEEK_MODEL = "deepseek-v4-flash"
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 def read_uploaded_text(uploaded_file) -> tuple[str, str]:
     raw_bytes = uploaded_file.getvalue()
@@ -46,49 +47,6 @@ def read_uploaded_text(uploaded_file) -> tuple[str, str]:
             continue
 
     return raw_bytes.decode("utf-8", errors="replace"), "utf-8 with replacement"
-
-
-def build_rag_prompt(question: str, context: str, sources: str) -> str:
-    return f"""
-请只根据下面的资料回答问题。
-如果资料中没有相关信息，就回答：资料中没有找到相关信息。
-回答最后必须写一行“来源：{sources}”。
-
-问题：
-{question}
-
-资料：
-{context}
-""".strip()
-
-
-def generate_answer_with_deepseek(question: str, retrieved_chunks: list[dict]) -> str:
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set.")
-
-    sources = ", ".join(f"Chunk {item['chunk_index']}" for item in retrieved_chunks)
-    context = format_retrieved_context(retrieved_chunks)
-    prompt = build_rag_prompt(question, context, sources)
-
-    client = OpenAI(
-        api_key=api_key,
-        base_url=DEEPSEEK_BASE_URL,
-    )
-
-    response = client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": "你是一个严谨的 RAG 问答助手，只能根据给定资料回答。",
-            },
-            {"role": "user", "content": prompt},
-        ],
-        stream=False,
-    )
-
-    return response.choices[0].message.content or ""
 
 
 def main() -> None:
@@ -227,7 +185,7 @@ def main() -> None:
         try:
             with st.spinner("Generating answer with DeepSeek..."):
                 final_answer = generate_answer_with_deepseek(question, retrieved_chunks)
-        except RuntimeError:
+        except MissingApiKeyError:
             st.warning(
                 "DEEPSEEK_API_KEY is not set in the current environment. "
                 "Set it before running the app to generate the final answer."
