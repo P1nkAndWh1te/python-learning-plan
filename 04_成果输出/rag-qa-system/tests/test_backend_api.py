@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from backend.services.embeddings import KEYWORD_EMBEDDING_MODE
-from conftest import FAQ_PATH
+from conftest import DOCUASK_BACKEND_FAQ_PATH, FAQ_PATH
 
 
 def test_documents_endpoint_indexes_faq_document():
@@ -365,6 +365,45 @@ def test_evaluation_endpoint_supports_rrf_mode():
     assert payload["chunk_count"] == 6
     assert payload["case_count"] == 10
     assert payload["top_k_recall"] >= 0.8
+
+
+def test_evaluation_endpoint_supports_custom_cases():
+    client = TestClient(app)
+    text = DOCUASK_BACKEND_FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/evaluation",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+            "top_k": 3,
+            "retrieval_mode": "bm25",
+            "evaluation_cases": [
+                {
+                    "question": "FastAPI 后端有哪些接口？",
+                    "expected_top_chunk": 2,
+                },
+                {
+                    "question": "documents/upload 文件上传支持什么格式？",
+                    "expected_top_chunk": 3,
+                },
+                {
+                    "question": "RRF 混合检索有什么作用？",
+                    "expected_top_chunk": 4,
+                },
+            ],
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["retrieval_mode"] == "bm25"
+    assert payload["chunk_count"] == 4
+    assert payload["case_count"] == 3
+    assert payload["top_k_recall"] == 1.0
 
 
 def test_evaluation_endpoint_returns_400_for_unknown_retrieval_mode():

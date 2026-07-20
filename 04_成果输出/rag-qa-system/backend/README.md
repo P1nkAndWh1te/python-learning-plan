@@ -157,6 +157,7 @@ POST /documents/upload markdown upload and unsupported file type
 POST /qa with vector, bm25, and rrf retrieval modes
 POST /answer missing API key and unknown retrieval mode
 POST /evaluation with vector, bm25, and rrf retrieval modes
+POST /evaluation with custom evaluation cases
 404 for missing collection
 400 for unknown retrieval mode
 Teaching keyword retrieval metrics
@@ -188,4 +189,4 @@ rows
 
 ## Next
 
-The next backend step is to expand the evaluation set beyond the current FAQ sample.
+The next step is to package the final project description and resume version.

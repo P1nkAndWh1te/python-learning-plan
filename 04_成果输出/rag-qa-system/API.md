@@ -183,6 +183,8 @@ sources
 
 用途：用固定 10 题评测当前文档切分和检索模式的召回效果。
 
+如果请求体传入 `evaluation_cases`，接口会使用自定义问题集；如果不传，使用默认 FAQ 10 题。
+
 请求体：
 
 ```json
@@ -192,7 +194,13 @@ sources
   "chunk_size": 350,
   "chunk_overlap": 50,
   "top_k": 3,
-  "retrieval_mode": "rrf"
+  "retrieval_mode": "rrf",
+  "evaluation_cases": [
+    {
+      "question": "RRF 混合检索有什么作用？",
+      "expected_top_chunk": 4
+    }
+  ]
 }
 ```
 
@@ -207,6 +215,13 @@ top_1_hit_rate
 top_k_recall
 rows
 ```
+
+`evaluation_cases` 字段说明：
+
+| Field | Type | Required | 说明 |
+|---|---|---|---|
+| `question` | string | yes | 评测问题 |
+| `expected_top_chunk` | int | yes | 期望排第一的 chunk 编号 |
 
 当前 FAQ 文档的 Day49 验证结果：
 
@@ -250,6 +265,7 @@ POST /documents/upload: markdown upload and unsupported file type
 POST /qa: vector / bm25 / rrf
 POST /answer: missing API key and unknown retrieval mode
 POST /evaluation: vector / bm25 / rrf
+POST /evaluation: custom evaluation cases
 missing collection -> 404
 unknown retrieval mode -> 400
 Teaching keyword retrieval metrics

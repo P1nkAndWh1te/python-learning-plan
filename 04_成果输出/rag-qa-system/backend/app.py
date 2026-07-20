@@ -82,6 +82,11 @@ class AnswerResponse(QaResponse):
     sources: str
 
 
+class EvaluationCase(BaseModel):
+    question: str = Field(..., min_length=1)
+    expected_top_chunk: int = Field(..., ge=1)
+
+
 class EvaluationRequest(BaseModel):
     text: str = Field(..., min_length=1)
     embedding_mode: str = KEYWORD_EMBEDDING_MODE
@@ -89,6 +94,7 @@ class EvaluationRequest(BaseModel):
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
     top_k: int = Field(default=3, ge=1, le=10)
     retrieval_mode: str = "vector"
+    evaluation_cases: list[EvaluationCase] | None = None
 
 
 class EvaluationRow(BaseModel):
@@ -325,8 +331,14 @@ def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
     if not chunks:
         raise HTTPException(status_code=400, detail="document text is empty")
 
+    evaluation_cases = (
+        [case.model_dump() for case in request.evaluation_cases]
+        if request.evaluation_cases is not None
+        else EVALUATION_CASES
+    )
+
     rows = evaluate_retrieval(
-        EVALUATION_CASES,
+        evaluation_cases,
         chunks,
         top_k=request.top_k,
         embedding_mode=request.embedding_mode,

@@ -10,6 +10,12 @@ FAQ_PATH = (
     / "day10_dify_knowledge"
     / "python_learning_faq.md"
 )
+DOCUASK_BACKEND_FAQ_PATH = (
+    PROJECT_ROOT
+    / "02_资料与素材"
+    / "day53_multi_document_eval"
+    / "docuask_backend_faq.md"
+)
 
 if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))

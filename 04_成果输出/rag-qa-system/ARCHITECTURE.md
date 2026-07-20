@@ -92,6 +92,8 @@ flowchart TD
 | `POST /answer` | 检索 chunks 后调用 LLM 生成 answer 和 sources |
 | `POST /evaluation` | 用固定问题集评估检索模式 |
 
+`POST /evaluation` 默认使用 FAQ 10 题，也支持传入自定义 `evaluation_cases`，用于不同文档配置不同问题集。
+
 ## 检索模式
 
 | Mode | 适合场景 | 当前项目作用 |
@@ -145,6 +147,12 @@ uploaded_document_chunks_bge_v3_xxxxxxxxxxxx
 文档入库 -> collection 查询 -> 检索模式切换 -> 固定问题评测 -> 错误分支
 ```
 
+Day53 后，评测能力扩展为：
+
+```text
+默认 FAQ 评测 + 自定义 evaluation cases + 多文档小样本评测
+```
+
 原因：
 
 - LLM API 依赖网络、额度和外部服务状态。
@@ -172,5 +180,5 @@ DocuAsk 已完成本地 `.txt/.md` 文件上传、切分、向量入库、三种
 
 建议下一阶段优先做：
 
-1. 扩展评测集，从 10 题小样本升级为更真实的多文档测试。
-2. 再评估是否引入 rerank 或 Docker Compose。
+1. 整理最终项目介绍和简历版本。
+2. 后续再评估是否引入 rerank 或 Docker Compose。

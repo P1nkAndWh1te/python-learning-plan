@@ -2,7 +2,7 @@
 
 **日期**：2026年7月20日
 **项目名称**：DocuAsk / RAG QA System  
-**当前阶段**：DocuAsk v2 工程化升级已完成 FastAPI、文件上传、持久化、自动评测、BM25/RRF、API/架构文档和 answer endpoint
+**当前阶段**：DocuAsk v2 工程化升级已完成 FastAPI、文件上传、持久化、自动评测、BM25/RRF、API/架构文档、answer endpoint 和多文档小样本评测
 **当前最新提交**：以 GitHub `main` 分支为准
 
 ---
@@ -54,6 +54,8 @@ DocuAsk 当前是一个本地文档 RAG 问答系统原型，用于验证完整 
 - 来源 chunk 展示。
 - 检索上下文展示。
 - 10 题固定检索评测。
+- 自定义 evaluation cases。
+- 多文档小样本评测。
 - Top-1 hit 和 Top-k recall 指标展示。
 - pytest 自动化测试。
 
@@ -155,7 +157,7 @@ BGE 中文 embedding 的 Top-1 排序效果更好。
 
 - FastAPI 后端已支持 `/answer`，但真实 LLM 调用仍依赖 API Key、网络、额度和模型服务状态。
 - Chroma 持久化目录是本地运行数据，不提交到 GitHub。
-- 当前评测集只有 10 个固定问题，规模较小。
+- 当前评测集是 2 份文档、13 个问题的小样本，规模仍然较小。
 - 当前已做 BM25 / RRF baseline，但未做 rerank。
 - 当前截图和 README 能展示项目，后续还可以补更真实的多文档材料。
 
