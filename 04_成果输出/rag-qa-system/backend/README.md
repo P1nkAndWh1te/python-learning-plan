@@ -104,8 +104,10 @@ Current automated coverage:
 
 ```text
 POST /documents
-POST /qa
+POST /qa with vector, bm25, and rrf retrieval modes
+POST /evaluation with vector, bm25, and rrf retrieval modes
 404 for missing collection
+400 for unknown retrieval mode
 Teaching keyword retrieval metrics
 ```
 

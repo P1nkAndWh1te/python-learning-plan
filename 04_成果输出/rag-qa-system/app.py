@@ -15,6 +15,7 @@ from backend.services.embeddings import (
     BGE_EMBEDDING_MODE,
     BGE_MODEL_NAME,
     KEYWORD_EMBEDDING_MODE,
+    get_matched_concepts,
 )
 from backend.services.evaluation import (
     EVALUATION_CASES,
