@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.services.bm25 import retrieve_relevant_chunks_bm25
 from backend.services.chunking import split_text_into_chunks
 from backend.services.embeddings import COLLECTION_NAMES, KEYWORD_EMBEDDING_MODE
 from backend.services.evaluation import (
@@ -13,12 +14,15 @@ from backend.services.retrieval import (
     build_chunk_collection,
     format_retrieved_context,
     get_collection_name,
+    get_chunks_from_collection,
     retrieve_relevant_chunks_from_collection,
 )
+from backend.services.rrf import retrieve_relevant_chunks_rrf
 
 
 DEFAULT_CHUNK_SIZE = 350
 DEFAULT_CHUNK_OVERLAP = 50
+RETRIEVAL_MODES = {"vector", "bm25", "rrf"}
 
 
 class DocumentRequest(BaseModel):
@@ -38,8 +42,10 @@ class DocumentResponse(BaseModel):
 
 class RetrievedChunk(BaseModel):
     chunk_index: int
-    distance: float
     text: str
+    distance: float | None = None
+    score: float | None = None
+    rrf_score: float | None = None
 
 
 class QaRequest(BaseModel):
@@ -47,12 +53,14 @@ class QaRequest(BaseModel):
     question: str = Field(..., min_length=1)
     embedding_mode: str = KEYWORD_EMBEDDING_MODE
     top_k: int = Field(default=3, ge=1, le=10)
+    retrieval_mode: str = "vector"
 
 
 class QaResponse(BaseModel):
     question: str
     embedding_mode: str
     collection_name: str
+    retrieval_mode: str
     top_k: int
     retrieved_chunks: list[RetrievedChunk]
     context: str
@@ -140,12 +148,33 @@ def query_document(request: QaRequest) -> QaResponse:
     if request.embedding_mode not in COLLECTION_NAMES:
         raise HTTPException(status_code=400, detail="unsupported embedding mode")
 
-    retrieved_chunks = retrieve_relevant_chunks_from_collection(
-        request.collection_name,
-        request.question,
-        top_k=request.top_k,
-        embedding_mode=request.embedding_mode,
-    )
+    if request.retrieval_mode not in RETRIEVAL_MODES:
+        raise HTTPException(status_code=400, detail="unsupported retrieval mode")
+
+    if request.retrieval_mode == "vector":
+        retrieved_chunks = retrieve_relevant_chunks_from_collection(
+            request.collection_name,
+            request.question,
+            top_k=request.top_k,
+            embedding_mode=request.embedding_mode,
+        )
+    else:
+        chunks = get_chunks_from_collection(request.collection_name)
+        if chunks is None:
+            retrieved_chunks = None
+        elif request.retrieval_mode == "bm25":
+            retrieved_chunks = retrieve_relevant_chunks_bm25(
+                request.question,
+                chunks,
+                top_k=request.top_k,
+            )
+        else:
+            retrieved_chunks = retrieve_relevant_chunks_rrf(
+                request.question,
+                chunks,
+                top_k=request.top_k,
+                embedding_mode=request.embedding_mode,
+            )
 
     if retrieved_chunks is None:
         raise HTTPException(status_code=404, detail="collection not found")
@@ -154,12 +183,15 @@ def query_document(request: QaRequest) -> QaResponse:
         question=request.question,
         embedding_mode=request.embedding_mode,
         collection_name=request.collection_name,
+        retrieval_mode=request.retrieval_mode,
         top_k=request.top_k,
         retrieved_chunks=[
             RetrievedChunk(
                 chunk_index=item["chunk_index"],
-                distance=item["distance"],
                 text=item["text"],
+                distance=item.get("distance"),
+                score=item.get("score"),
+                rrf_score=item.get("rrf_score"),
             )
             for item in retrieved_chunks
         ],

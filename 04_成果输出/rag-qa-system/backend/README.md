@@ -75,7 +75,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/qa" -Method Post -ContentType "app
   "collection_name": "uploaded_document_chunks_keyword_xxxxxxxxxxxx",
   "question": "RAG 的基本流程是什么？",
   "embedding_mode": "Teaching keyword embedding",
-  "top_k": 3
+  "top_k": 3,
+  "retrieval_mode": "vector"
 }'
 ```
 
@@ -86,6 +87,7 @@ question
 embedding_mode
 collection_name
 top_k
+retrieval_mode
 retrieved_chunks
 context
 ```
@@ -133,5 +135,6 @@ rows
 
 The next backend steps are:
 
+- Add retrieval mode to evaluation endpoint.
 - Add optional LLM generation.
 - Add optional multipart file upload endpoint.

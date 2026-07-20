@@ -57,9 +57,80 @@ def test_qa_endpoint_retrieves_expected_chunk():
     retrieved_chunks = payload["retrieved_chunks"]
 
     assert qa_response.status_code == 200
+    assert payload["retrieval_mode"] == "vector"
     assert retrieved_chunks[0]["chunk_index"] == 6
     assert len(retrieved_chunks) == 3
     assert "[Chunk 6]" in payload["context"]
+
+
+def test_qa_endpoint_supports_bm25_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    document_response = client.post(
+        "/documents",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+        },
+    )
+    collection_name = document_response.json()["collection_name"]
+
+    qa_response = client.post(
+        "/qa",
+        json={
+            "collection_name": collection_name,
+            "question": "RAG 的基本流程是什么？",
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "top_k": 3,
+            "retrieval_mode": "bm25",
+        },
+    )
+
+    payload = qa_response.json()
+    retrieved_chunks = payload["retrieved_chunks"]
+
+    assert qa_response.status_code == 200
+    assert payload["retrieval_mode"] == "bm25"
+    assert retrieved_chunks[0]["chunk_index"] == 6
+    assert retrieved_chunks[0]["score"] > 0
+
+
+def test_qa_endpoint_supports_rrf_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    document_response = client.post(
+        "/documents",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+        },
+    )
+    collection_name = document_response.json()["collection_name"]
+
+    qa_response = client.post(
+        "/qa",
+        json={
+            "collection_name": collection_name,
+            "question": "RAG 的基本流程是什么？",
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "top_k": 3,
+            "retrieval_mode": "rrf",
+        },
+    )
+
+    payload = qa_response.json()
+    retrieved_chunks = payload["retrieved_chunks"]
+
+    assert qa_response.status_code == 200
+    assert payload["retrieval_mode"] == "rrf"
+    assert retrieved_chunks[0]["chunk_index"] == 6
+    assert retrieved_chunks[0]["rrf_score"] > 0
 
 
 def test_qa_endpoint_returns_404_for_missing_collection():
@@ -76,6 +147,35 @@ def test_qa_endpoint_returns_404_for_missing_collection():
     )
 
     assert response.status_code == 404
+
+
+def test_qa_endpoint_returns_400_for_unknown_retrieval_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    document_response = client.post(
+        "/documents",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+        },
+    )
+    collection_name = document_response.json()["collection_name"]
+
+    response = client.post(
+        "/qa",
+        json={
+            "collection_name": collection_name,
+            "question": "RAG 的基本流程是什么？",
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "top_k": 3,
+            "retrieval_mode": "unknown",
+        },
+    )
+
+    assert response.status_code == 400
 
 
 def test_evaluation_endpoint_returns_fixed_metrics():

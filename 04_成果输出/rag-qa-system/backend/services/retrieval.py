@@ -40,6 +40,26 @@ def get_existing_collection(client, collection_name: str):
         return None
 
 
+def get_chunks_from_collection(collection_name: str) -> list[str] | None:
+    client = get_chroma_client()
+    collection = get_existing_collection(client, collection_name)
+    if collection is None:
+        return None
+
+    result = collection.get(include=["documents", "metadatas"])
+    chunk_items = []
+    for document, metadata in zip(result["documents"], result["metadatas"]):
+        chunk_items.append(
+            {
+                "text": document,
+                "chunk_index": metadata["chunk_index"],
+            }
+        )
+
+    chunk_items.sort(key=lambda item: item["chunk_index"])
+    return [item["text"] for item in chunk_items]
+
+
 def build_chunk_collection(chunks: list[str], embedding_mode: str):
     client = get_chroma_client()
     collection_name = get_collection_name(chunks, embedding_mode)
