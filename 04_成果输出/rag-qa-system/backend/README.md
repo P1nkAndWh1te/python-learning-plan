@@ -86,6 +86,23 @@ retrieved_chunks
 context
 ```
 
+## Test
+
+From the project root:
+
+```powershell
+python -m pytest -q
+```
+
+Current automated coverage:
+
+```text
+POST /documents
+POST /qa
+404 for missing collection
+Teaching keyword retrieval metrics
+```
+
 ## Next
 
 The next backend steps are:
