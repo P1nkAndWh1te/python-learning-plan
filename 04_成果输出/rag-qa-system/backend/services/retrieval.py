@@ -2,6 +2,7 @@ import hashlib
 from pathlib import Path
 
 import chromadb
+from chromadb.errors import NotFoundError
 
 from backend.services.embeddings import (
     COLLECTION_NAMES,
@@ -29,6 +30,13 @@ def get_chunk_collection(client, collection_name: str):
         name=collection_name,
         metadata={"hnsw:space": "cosine"},
     )
+
+
+def get_existing_collection(client, collection_name: str):
+    try:
+        return client.get_collection(name=collection_name)
+    except NotFoundError:
+        return None
 
 
 def build_chunk_collection(chunks: list[str], embedding_mode: str):
@@ -80,6 +88,48 @@ def retrieve_relevant_chunks(
     result = collection.query(
         query_embeddings=[query_embedding],
         n_results=min(top_k, collection.count()),
+        include=["documents", "metadatas", "distances"],
+    )
+
+    retrieved_chunks = []
+    for document, metadata, distance in zip(
+        result["documents"][0],
+        result["metadatas"][0],
+        result["distances"][0],
+    ):
+        retrieved_chunks.append(
+            {
+                "text": document,
+                "chunk_index": metadata["chunk_index"],
+                "distance": distance,
+            }
+        )
+
+    return retrieved_chunks
+
+
+def retrieve_relevant_chunks_from_collection(
+    collection_name: str,
+    question: str,
+    top_k: int,
+    embedding_mode: str = KEYWORD_EMBEDDING_MODE,
+) -> list[dict] | None:
+    query_embedding = embed_for_mode(question, embedding_mode)
+    if not any(query_embedding):
+        return []
+
+    client = get_chroma_client()
+    collection = get_existing_collection(client, collection_name)
+    if collection is None:
+        return None
+
+    collection_count = collection.count()
+    if collection_count == 0:
+        return []
+
+    result = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=min(top_k, collection_count),
         include=["documents", "metadatas", "distances"],
     )
 

@@ -3,7 +3,12 @@ from pydantic import BaseModel, Field
 
 from backend.services.chunking import split_text_into_chunks
 from backend.services.embeddings import COLLECTION_NAMES, KEYWORD_EMBEDDING_MODE
-from backend.services.retrieval import build_chunk_collection, get_collection_name
+from backend.services.retrieval import (
+    build_chunk_collection,
+    format_retrieved_context,
+    get_collection_name,
+    retrieve_relevant_chunks_from_collection,
+)
 
 
 DEFAULT_CHUNK_SIZE = 350
@@ -23,6 +28,28 @@ class DocumentResponse(BaseModel):
     collection_name: str
     chunk_count: int
     stored_chunk_count: int
+
+
+class RetrievedChunk(BaseModel):
+    chunk_index: int
+    distance: float
+    text: str
+
+
+class QaRequest(BaseModel):
+    collection_name: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1)
+    embedding_mode: str = KEYWORD_EMBEDDING_MODE
+    top_k: int = Field(default=3, ge=1, le=10)
+
+
+class QaResponse(BaseModel):
+    question: str
+    embedding_mode: str
+    collection_name: str
+    top_k: int
+    retrieved_chunks: list[RetrievedChunk]
+    context: str
 
 
 app = FastAPI(
@@ -71,4 +98,36 @@ def create_document(request: DocumentRequest) -> DocumentResponse:
         collection_name=collection_name,
         chunk_count=len(chunks),
         stored_chunk_count=collection.count(),
+    )
+
+
+@app.post("/qa", response_model=QaResponse)
+def query_document(request: QaRequest) -> QaResponse:
+    if request.embedding_mode not in COLLECTION_NAMES:
+        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+
+    retrieved_chunks = retrieve_relevant_chunks_from_collection(
+        request.collection_name,
+        request.question,
+        top_k=request.top_k,
+        embedding_mode=request.embedding_mode,
+    )
+
+    if retrieved_chunks is None:
+        raise HTTPException(status_code=404, detail="collection not found")
+
+    return QaResponse(
+        question=request.question,
+        embedding_mode=request.embedding_mode,
+        collection_name=request.collection_name,
+        top_k=request.top_k,
+        retrieved_chunks=[
+            RetrievedChunk(
+                chunk_index=item["chunk_index"],
+                distance=item["distance"],
+                text=item["text"],
+            )
+            for item in retrieved_chunks
+        ],
+        context=format_retrieved_context(retrieved_chunks),
     )

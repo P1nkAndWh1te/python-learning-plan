@@ -7,6 +7,7 @@ Current scope:
 ```text
 GET /health
 POST /documents
+POST /qa
 services/chunking.py
 services/embeddings.py
 services/retrieval.py
@@ -61,10 +62,34 @@ chunk_count
 stored_chunk_count
 ```
 
+## Query a Document
+
+Use the `collection_name` returned by `POST /documents`.
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/qa" -Method Post -ContentType "application/json" -Body '{
+  "collection_name": "uploaded_document_chunks_keyword_xxxxxxxxxxxx",
+  "question": "RAG 的基本流程是什么？",
+  "embedding_mode": "Teaching keyword embedding",
+  "top_k": 3
+}'
+```
+
+Expected fields:
+
+```text
+question
+embedding_mode
+collection_name
+top_k
+retrieved_chunks
+context
+```
+
 ## Next
 
 The next backend steps are:
 
-- Add QA endpoint.
 - Add evaluation endpoint.
+- Add optional LLM generation.
 - Add optional multipart file upload endpoint.
