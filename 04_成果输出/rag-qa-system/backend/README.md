@@ -14,6 +14,7 @@ services/bm25.py
 services/embeddings.py
 services/evaluation.py
 services/retrieval.py
+services/rrf.py
 storage/chroma_db*/ (local, ignored)
 ```
 

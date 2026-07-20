@@ -3,6 +3,7 @@ from pathlib import Path
 
 from conftest import FAQ_PATH
 from backend.services.bm25 import retrieve_relevant_chunks_bm25
+from backend.services.rrf import retrieve_relevant_chunks_rrf
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -56,3 +57,24 @@ def test_bm25_retrieves_rag_flow_chunk():
 
     assert results[0]["chunk_index"] == 6
     assert results[0]["score"] > 0
+
+
+def test_rrf_retrieves_rag_flow_chunk():
+    rag_app = load_rag_app_module()
+    text = FAQ_PATH.read_text(encoding="utf-8")
+    chunks = rag_app.split_text_into_chunks(
+        text,
+        chunk_size=rag_app.DEFAULT_CHUNK_SIZE,
+        chunk_overlap=rag_app.DEFAULT_CHUNK_OVERLAP,
+    )
+
+    results = retrieve_relevant_chunks_rrf(
+        "RAG 的基本流程是什么？",
+        chunks,
+        top_k=3,
+        embedding_mode=rag_app.KEYWORD_EMBEDDING_MODE,
+    )
+
+    assert results[0]["chunk_index"] == 6
+    assert results[0]["rrf_score"] > 0
+    assert len(results[0]["sources"]) >= 1
