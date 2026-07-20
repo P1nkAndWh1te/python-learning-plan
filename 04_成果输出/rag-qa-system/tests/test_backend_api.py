@@ -196,9 +196,79 @@ def test_evaluation_endpoint_returns_fixed_metrics():
     payload = response.json()
 
     assert response.status_code == 200
+    assert payload["retrieval_mode"] == "vector"
     assert payload["chunk_count"] == 6
     assert payload["case_count"] == 10
     assert payload["top_1_hit_rate"] == 0.6
     assert payload["top_k_recall"] == 1.0
     assert payload["rows"][-1]["question"] == "RAG 的基本流程是什么？"
     assert payload["rows"][-1]["hit"] is True
+
+
+def test_evaluation_endpoint_supports_bm25_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/evaluation",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+            "top_k": 3,
+            "retrieval_mode": "bm25",
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["retrieval_mode"] == "bm25"
+    assert payload["chunk_count"] == 6
+    assert payload["case_count"] == 10
+    assert payload["top_k_recall"] >= 0.8
+
+
+def test_evaluation_endpoint_supports_rrf_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/evaluation",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+            "top_k": 3,
+            "retrieval_mode": "rrf",
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["retrieval_mode"] == "rrf"
+    assert payload["chunk_count"] == 6
+    assert payload["case_count"] == 10
+    assert payload["top_k_recall"] >= 0.8
+
+
+def test_evaluation_endpoint_returns_400_for_unknown_retrieval_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/evaluation",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+            "top_k": 3,
+            "retrieval_mode": "unknown",
+        },
+    )
+
+    assert response.status_code == 400

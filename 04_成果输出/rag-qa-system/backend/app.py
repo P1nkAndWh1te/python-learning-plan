@@ -6,6 +6,7 @@ from backend.services.chunking import split_text_into_chunks
 from backend.services.embeddings import COLLECTION_NAMES, KEYWORD_EMBEDDING_MODE
 from backend.services.evaluation import (
     EVALUATION_CASES,
+    RETRIEVAL_MODES,
     calculate_hit_rate,
     calculate_top_k_hit_rate,
     evaluate_retrieval,
@@ -22,7 +23,6 @@ from backend.services.rrf import retrieve_relevant_chunks_rrf
 
 DEFAULT_CHUNK_SIZE = 350
 DEFAULT_CHUNK_OVERLAP = 50
-RETRIEVAL_MODES = {"vector", "bm25", "rrf"}
 
 
 class DocumentRequest(BaseModel):
@@ -72,21 +72,24 @@ class EvaluationRequest(BaseModel):
     chunk_size: int = DEFAULT_CHUNK_SIZE
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
     top_k: int = Field(default=3, ge=1, le=10)
+    retrieval_mode: str = "vector"
 
 
 class EvaluationRow(BaseModel):
     question: str
     embedding_mode: str
+    retrieval_mode: str
     expected_top_chunk: str
     matched_concepts: str
     top_chunks: str
-    best_distance: str
+    best_score: str
     hit: bool
     top_k_hit: bool
 
 
 class EvaluationResponse(BaseModel):
     embedding_mode: str
+    retrieval_mode: str
     chunk_count: int
     case_count: int
     top_1_hit_rate: float
@@ -204,6 +207,9 @@ def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
     if request.embedding_mode not in COLLECTION_NAMES:
         raise HTTPException(status_code=400, detail="unsupported embedding mode")
 
+    if request.retrieval_mode not in RETRIEVAL_MODES:
+        raise HTTPException(status_code=400, detail="unsupported retrieval mode")
+
     try:
         chunks = split_text_into_chunks(
             request.text,
@@ -221,10 +227,12 @@ def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
         chunks,
         top_k=request.top_k,
         embedding_mode=request.embedding_mode,
+        retrieval_mode=request.retrieval_mode,
     )
 
     return EvaluationResponse(
         embedding_mode=request.embedding_mode,
+        retrieval_mode=request.retrieval_mode,
         chunk_count=len(chunks),
         case_count=len(rows),
         top_1_hit_rate=calculate_hit_rate(rows),

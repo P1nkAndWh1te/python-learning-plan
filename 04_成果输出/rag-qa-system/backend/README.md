@@ -117,7 +117,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/evaluation" -Method Post -ContentT
   "embedding_mode": "Teaching keyword embedding",
   "chunk_size": 350,
   "chunk_overlap": 50,
-  "top_k": 3
+  "top_k": 3,
+  "retrieval_mode": "vector"
 }'
 ```
 
@@ -126,6 +127,7 @@ Expected fields:
 ```text
 chunk_count
 case_count
+retrieval_mode
 top_1_hit_rate
 top_k_recall
 rows
@@ -135,6 +137,5 @@ rows
 
 The next backend steps are:
 
-- Add retrieval mode to evaluation endpoint.
 - Add optional LLM generation.
 - Add optional multipart file upload endpoint.

@@ -1,5 +1,7 @@
+from backend.services.bm25 import retrieve_relevant_chunks_bm25
 from backend.services.embeddings import KEYWORD_EMBEDDING_MODE, get_matched_concepts
 from backend.services.retrieval import retrieve_relevant_chunks
+from backend.services.rrf import retrieve_relevant_chunks_rrf
 
 
 EVALUATION_CASES = [
@@ -14,6 +16,7 @@ EVALUATION_CASES = [
     {"question": "当前项目使用哪个向量数据库？", "expected_top_chunk": 5},
     {"question": "RAG 的基本流程是什么？", "expected_top_chunk": 6},
 ]
+RETRIEVAL_MODES = {"vector", "bm25", "rrf"}
 
 
 def evaluate_retrieval(
@@ -21,17 +24,19 @@ def evaluate_retrieval(
     chunks: list[str],
     top_k: int,
     embedding_mode: str = KEYWORD_EMBEDDING_MODE,
+    retrieval_mode: str = "vector",
 ) -> list[dict]:
     rows = []
 
     for case in evaluation_cases:
         question = case["question"]
         expected_top_chunk = case["expected_top_chunk"]
-        retrieved_chunks = retrieve_relevant_chunks(
-            question,
-            chunks,
+        retrieved_chunks = retrieve_for_mode(
+            question=question,
+            chunks=chunks,
             top_k=top_k,
             embedding_mode=embedding_mode,
+            retrieval_mode=retrieval_mode,
         )
         matched_concepts = get_matched_concepts(question)
         actual_top_chunk = (
@@ -48,22 +53,64 @@ def evaluate_retrieval(
             {
                 "question": question,
                 "embedding_mode": embedding_mode,
+                "retrieval_mode": retrieval_mode,
                 "expected_top_chunk": f"Chunk {expected_top_chunk}",
                 "matched_concepts": ", ".join(matched_concepts) or "none",
                 "top_chunks": ", ".join(
                     f"Chunk {item['chunk_index']}" for item in retrieved_chunks
                 ) or "none",
-                "best_distance": (
-                    f"{retrieved_chunks[0]['distance']:.4f}"
-                    if retrieved_chunks
-                    else "none"
-                ),
+                "best_score": format_best_score(retrieved_chunks),
                 "hit": actual_top_chunk == expected_top_chunk,
                 "top_k_hit": expected_top_chunk in retrieved_chunk_indexes,
             }
         )
 
     return rows
+
+
+def retrieve_for_mode(
+    question: str,
+    chunks: list[str],
+    top_k: int,
+    embedding_mode: str,
+    retrieval_mode: str,
+) -> list[dict]:
+    if retrieval_mode == "vector":
+        return retrieve_relevant_chunks(
+            question,
+            chunks,
+            top_k=top_k,
+            embedding_mode=embedding_mode,
+        )
+
+    if retrieval_mode == "bm25":
+        return retrieve_relevant_chunks_bm25(
+            question,
+            chunks,
+            top_k=top_k,
+        )
+
+    if retrieval_mode == "rrf":
+        return retrieve_relevant_chunks_rrf(
+            question,
+            chunks,
+            top_k=top_k,
+            embedding_mode=embedding_mode,
+        )
+
+    raise ValueError("unsupported retrieval mode")
+
+
+def format_best_score(retrieved_chunks: list[dict]) -> str:
+    if not retrieved_chunks:
+        return "none"
+
+    best_chunk = retrieved_chunks[0]
+    for key in ("distance", "score", "rrf_score"):
+        if key in best_chunk and best_chunk[key] is not None:
+            return f"{best_chunk[key]:.4f}"
+
+    return "none"
 
 
 def calculate_hit_rate(evaluation_rows: list[dict]) -> float:
