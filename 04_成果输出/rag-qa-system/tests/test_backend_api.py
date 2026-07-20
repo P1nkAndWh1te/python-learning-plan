@@ -76,3 +76,29 @@ def test_qa_endpoint_returns_404_for_missing_collection():
     )
 
     assert response.status_code == 404
+
+
+def test_evaluation_endpoint_returns_fixed_metrics():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/evaluation",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+            "top_k": 3,
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["chunk_count"] == 6
+    assert payload["case_count"] == 10
+    assert payload["top_1_hit_rate"] == 0.6
+    assert payload["top_k_recall"] == 1.0
+    assert payload["rows"][-1]["question"] == "RAG 的基本流程是什么？"
+    assert payload["rows"][-1]["hit"] is True

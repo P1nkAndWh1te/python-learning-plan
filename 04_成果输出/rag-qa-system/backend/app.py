@@ -3,6 +3,12 @@ from pydantic import BaseModel, Field
 
 from backend.services.chunking import split_text_into_chunks
 from backend.services.embeddings import COLLECTION_NAMES, KEYWORD_EMBEDDING_MODE
+from backend.services.evaluation import (
+    EVALUATION_CASES,
+    calculate_hit_rate,
+    calculate_top_k_hit_rate,
+    evaluate_retrieval,
+)
 from backend.services.retrieval import (
     build_chunk_collection,
     format_retrieved_context,
@@ -50,6 +56,34 @@ class QaResponse(BaseModel):
     top_k: int
     retrieved_chunks: list[RetrievedChunk]
     context: str
+
+
+class EvaluationRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    embedding_mode: str = KEYWORD_EMBEDDING_MODE
+    chunk_size: int = DEFAULT_CHUNK_SIZE
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
+    top_k: int = Field(default=3, ge=1, le=10)
+
+
+class EvaluationRow(BaseModel):
+    question: str
+    embedding_mode: str
+    expected_top_chunk: str
+    matched_concepts: str
+    top_chunks: str
+    best_distance: str
+    hit: bool
+    top_k_hit: bool
+
+
+class EvaluationResponse(BaseModel):
+    embedding_mode: str
+    chunk_count: int
+    case_count: int
+    top_1_hit_rate: float
+    top_k_recall: float
+    rows: list[EvaluationRow]
 
 
 app = FastAPI(
@@ -130,4 +164,38 @@ def query_document(request: QaRequest) -> QaResponse:
             for item in retrieved_chunks
         ],
         context=format_retrieved_context(retrieved_chunks),
+    )
+
+
+@app.post("/evaluation", response_model=EvaluationResponse)
+def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
+    if request.embedding_mode not in COLLECTION_NAMES:
+        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+
+    try:
+        chunks = split_text_into_chunks(
+            request.text,
+            chunk_size=request.chunk_size,
+            chunk_overlap=request.chunk_overlap,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not chunks:
+        raise HTTPException(status_code=400, detail="document text is empty")
+
+    rows = evaluate_retrieval(
+        EVALUATION_CASES,
+        chunks,
+        top_k=request.top_k,
+        embedding_mode=request.embedding_mode,
+    )
+
+    return EvaluationResponse(
+        embedding_mode=request.embedding_mode,
+        chunk_count=len(chunks),
+        case_count=len(rows),
+        top_1_hit_rate=calculate_hit_rate(rows),
+        top_k_recall=calculate_top_k_hit_rate(rows),
+        rows=[EvaluationRow(**row) for row in rows],
     )

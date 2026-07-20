@@ -11,7 +11,8 @@ from backend.services.embeddings import (
 )
 
 
-CHROMA_DB_PATH = Path(__file__).resolve().parents[1] / "storage" / "chroma_db"
+CHROMA_DB_PATH = Path(__file__).resolve().parents[1] / "storage" / "chroma_db_v2"
+COLLECTION_SCHEMA_VERSION = "v3"
 
 
 def get_chroma_client():
@@ -22,7 +23,7 @@ def get_chroma_client():
 def get_collection_name(chunks: list[str], embedding_mode: str) -> str:
     source_text = "\n\n".join(chunks)
     digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()[:12]
-    return f"{COLLECTION_NAMES[embedding_mode]}_{digest}"
+    return f"{COLLECTION_NAMES[embedding_mode]}_{COLLECTION_SCHEMA_VERSION}_{digest}"
 
 
 def get_chunk_collection(client, collection_name: str):
@@ -52,6 +53,9 @@ def build_chunk_collection(chunks: list[str], embedding_mode: str):
 
     if not embedded_chunks:
         return None
+
+    if collection.count() >= len(embedded_chunks):
+        return collection
 
     ids = [f"chunk-{index}" for index, _, _ in embedded_chunks]
     documents = [chunk for _, chunk, _ in embedded_chunks]

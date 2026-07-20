@@ -8,10 +8,12 @@ Current scope:
 GET /health
 POST /documents
 POST /qa
+POST /evaluation
 services/chunking.py
 services/embeddings.py
+services/evaluation.py
 services/retrieval.py
-storage/chroma_db/ (local, ignored)
+storage/chroma_db*/ (local, ignored)
 ```
 
 It does not replace the Streamlit app yet. The goal is to introduce a reusable
@@ -103,10 +105,31 @@ POST /qa
 Teaching keyword retrieval metrics
 ```
 
+## Evaluate Retrieval
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/evaluation" -Method Post -ContentType "application/json" -Body '{
+  "text": "# Python 学习 FAQ\n\n## RAG 的基本流程是什么？\nRAG 会先检索资料，再让 LLM 根据资料回答。",
+  "embedding_mode": "Teaching keyword embedding",
+  "chunk_size": 350,
+  "chunk_overlap": 50,
+  "top_k": 3
+}'
+```
+
+Expected fields:
+
+```text
+chunk_count
+case_count
+top_1_hit_rate
+top_k_recall
+rows
+```
+
 ## Next
 
 The next backend steps are:
 
-- Add evaluation endpoint.
 - Add optional LLM generation.
 - Add optional multipart file upload endpoint.
