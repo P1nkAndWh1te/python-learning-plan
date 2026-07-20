@@ -6,6 +6,7 @@ Current scope:
 
 ```text
 GET /health
+POST /documents
 services/chunking.py
 services/embeddings.py
 services/retrieval.py
@@ -39,10 +40,31 @@ Expected response:
 }
 ```
 
+## Index a Document
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/documents" -Method Post -ContentType "application/json" -Body '{
+  "text": "# Python 学习 FAQ\n\n## RAG 的基本流程是什么？\nRAG 会先检索资料，再让 LLM 根据资料回答。",
+  "embedding_mode": "Teaching keyword embedding",
+  "chunk_size": 350,
+  "chunk_overlap": 50
+}'
+```
+
+Expected fields:
+
+```text
+document_id
+embedding_mode
+collection_name
+chunk_count
+stored_chunk_count
+```
+
 ## Next
 
 The next backend steps are:
 
-- Add document upload endpoint.
 - Add QA endpoint.
 - Add evaluation endpoint.
+- Add optional multipart file upload endpoint.
