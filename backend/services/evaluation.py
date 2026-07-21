@@ -1,0 +1,129 @@
+from backend.services.bm25 import retrieve_relevant_chunks_bm25
+from backend.services.embeddings import KEYWORD_EMBEDDING_MODE, get_matched_concepts
+from backend.services.retrieval import retrieve_relevant_chunks
+from backend.services.rrf import retrieve_relevant_chunks_rrf
+
+
+EVALUATION_CASES = [
+    {"question": "LLM API 如何配置？", "expected_top_chunk": 2},
+    {"question": "DeepSeek API 怎么配置？", "expected_top_chunk": 2},
+    {"question": "OpenAI-compatible API 和 ChatGPT Plus 额度互通吗？", "expected_top_chunk": 2},
+    {"question": "API Key 为什么不能写进代码？", "expected_top_chunk": 3},
+    {"question": "怎么从环境变量读取 DEEPSEEK_API_KEY？", "expected_top_chunk": 3},
+    {"question": "什么是 embedding？", "expected_top_chunk": 4},
+    {"question": "embedding 如何用于检索？", "expected_top_chunk": 4},
+    {"question": "向量数据库有什么作用？", "expected_top_chunk": 5},
+    {"question": "当前项目使用哪个向量数据库？", "expected_top_chunk": 5},
+    {"question": "RAG 的基本流程是什么？", "expected_top_chunk": 6},
+]
+RETRIEVAL_MODES = {"vector", "bm25", "rrf"}
+
+
+def evaluate_retrieval(
+    evaluation_cases: list[dict],
+    chunks: list[str],
+    top_k: int,
+    embedding_mode: str = KEYWORD_EMBEDDING_MODE,
+    retrieval_mode: str = "vector",
+) -> list[dict]:
+    rows = []
+
+    for case in evaluation_cases:
+        question = case["question"]
+        expected_top_chunk = case["expected_top_chunk"]
+        retrieved_chunks = retrieve_for_mode(
+            question=question,
+            chunks=chunks,
+            top_k=top_k,
+            embedding_mode=embedding_mode,
+            retrieval_mode=retrieval_mode,
+        )
+        matched_concepts = get_matched_concepts(question)
+        actual_top_chunk = (
+            retrieved_chunks[0]["chunk_index"]
+            if retrieved_chunks
+            else None
+        )
+        retrieved_chunk_indexes = [
+            item["chunk_index"]
+            for item in retrieved_chunks
+        ]
+
+        rows.append(
+            {
+                "question": question,
+                "embedding_mode": embedding_mode,
+                "retrieval_mode": retrieval_mode,
+                "expected_top_chunk": f"Chunk {expected_top_chunk}",
+                "matched_concepts": ", ".join(matched_concepts) or "none",
+                "top_chunks": ", ".join(
+                    f"Chunk {item['chunk_index']}" for item in retrieved_chunks
+                ) or "none",
+                "best_score": format_best_score(retrieved_chunks),
+                "hit": actual_top_chunk == expected_top_chunk,
+                "top_k_hit": expected_top_chunk in retrieved_chunk_indexes,
+            }
+        )
+
+    return rows
+
+
+def retrieve_for_mode(
+    question: str,
+    chunks: list[str],
+    top_k: int,
+    embedding_mode: str,
+    retrieval_mode: str,
+) -> list[dict]:
+    if retrieval_mode == "vector":
+        return retrieve_relevant_chunks(
+            question,
+            chunks,
+            top_k=top_k,
+            embedding_mode=embedding_mode,
+        )
+
+    if retrieval_mode == "bm25":
+        return retrieve_relevant_chunks_bm25(
+            question,
+            chunks,
+            top_k=top_k,
+        )
+
+    if retrieval_mode == "rrf":
+        return retrieve_relevant_chunks_rrf(
+            question,
+            chunks,
+            top_k=top_k,
+            embedding_mode=embedding_mode,
+        )
+
+    raise ValueError("unsupported retrieval mode")
+
+
+def format_best_score(retrieved_chunks: list[dict]) -> str:
+    if not retrieved_chunks:
+        return "none"
+
+    best_chunk = retrieved_chunks[0]
+    for key in ("distance", "score", "rrf_score"):
+        if key in best_chunk and best_chunk[key] is not None:
+            return f"{best_chunk[key]:.4f}"
+
+    return "none"
+
+
+def calculate_hit_rate(evaluation_rows: list[dict]) -> float:
+    if not evaluation_rows:
+        return 0.0
+
+    hit_count = sum(1 for row in evaluation_rows if row["hit"])
+    return hit_count / len(evaluation_rows)
+
+
+def calculate_top_k_hit_rate(evaluation_rows: list[dict]) -> float:
+    if not evaluation_rows:
+        return 0.0
+
+    hit_count = sum(1 for row in evaluation_rows if row["top_k_hit"])
+    return hit_count / len(evaluation_rows)
