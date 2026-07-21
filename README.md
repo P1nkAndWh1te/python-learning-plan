@@ -1,118 +1,188 @@
-# project002Python学习计划
+# RAG QA System
 
-这是一个围绕 Python、LLM API、RAG 和项目实战展开的学习项目。所有计划、代码、材料、复盘和成果都集中在本 WorkSpace 项目目录下。
-
-## 当前进度
-
-- 当前日期：2026-07-19
-- 当前学习日：Day 34
-- 当前阶段：第三阶段 — RAG 项目实战与作品化整理
-- 当前成果：已完成一个可运行、可评测、支持真实中文 embedding 的 Streamlit RAG QA 原型
-
-## 核心成果
-
-正式项目位于：
+RAG QA System 是一个本地文档问答原型，用于学习和验证 RAG 的核心链路：
 
 ```text
-04_成果输出/rag-qa-system/
+文档上传 -> 文档读取 -> 文档切分 -> embedding -> 向量检索 -> 上下文组织 -> LLM 回答 -> 来源引用
 ```
 
-当前 RAG QA System 已支持：
+当前版本以 Streamlit 作为页面入口，Chroma 作为向量数据库，DeepSeek 作为 OpenAI-compatible LLM API。
 
-- 上传 TXT / Markdown 文档。
-- 读取并预览文档内容。
+当前后端已经补充 FastAPI 接口，用于文档入库、检索问答和固定问题检索评测。
+
+## 展示材料
+
+- 项目展示说明：`PROJECT_BRIEF.md`
+- 项目介绍与简历版本：`PROJECT_RESUME.md`
+- 正式简历候选版本：`RESUME_FINAL_DRAFT.md`
+- 面试追问准备：`INTERVIEW_QA.md`
+- API 文档：`API.md`
+- 架构说明：`ARCHITECTURE.md`
+- 截图清单：`SCREENSHOT_CHECKLIST.md`
+- 页面截图：`screenshots/`
+
+## Screenshots
+
+### Upload and Question
+
+![Upload and question](screenshots/01_app_upload.png)
+
+### Chunks
+
+![Chunks](screenshots/02_chunks.png)
+
+### Retrieval Metrics
+
+![Retrieval metrics](screenshots/03_retrieval_metrics.png)
+
+### BGE Metrics
+
+![BGE metrics](screenshots/04_bge_metrics.png)
+
+### Answer Context
+
+![Answer context](screenshots/05_answer_context.png)
+
+### Final Answer and Sources
+
+![Final answer and sources](screenshots/06_answer_sources.png)
+
+## 功能
+
+- 上传 TXT 或 Markdown 文档。
+- 读取上传文档内容并显示预览。
 - 优先按 Markdown `##` 标题切分文档。
+- 对普通文本使用固定长度切分。
 - 支持教学版关键词 embedding 和 BGE 中文 embedding 双模式。
 - 使用 Chroma cosine 距离检索 Top 3 chunks。
+- 展示问题命中的概念维度。
 - 展示检索上下文和来源引用。
-- 调用 DeepSeek 作为 OpenAI-compatible LLM API 生成回答。
-- 使用 10 个固定问题评测检索质量。
-- 分开展示 Top-1 hit 和 Top-k recall。
+- 调用 DeepSeek 基于检索上下文生成最终回答。
+- 使用 10 个固定测试问题观察检索质量。
+- 支持自定义 evaluation cases，用于多文档小样本评测。
+- 显示 expected top chunk、Top-1 hit、Top-k recall 和检索明细。
+- FastAPI 后端支持 `/health`、`/documents`、`/documents/upload`、`/qa`、`/evaluation`。
+- FastAPI `/documents/upload` 支持 `.txt` / `.md` 文件上传入库。
+- FastAPI `/answer` 支持基于检索上下文生成最终回答和来源。
+- `/qa` 和 `/evaluation` 支持 `vector`、`bm25`、`rrf` 三种检索模式。
+- Chroma 使用本地 PersistentClient 保存索引数据。
+- 使用 pytest 覆盖核心接口和检索指标。
 
-## 当前评测结果
+## 技术栈
 
-测试文档：
-
-```text
-02_资料与素材/day10_dify_knowledge/python_learning_faq.md
-```
-
-当前 10 题评测结果：
-
-```text
-Teaching keyword embedding: Top-1 60%, Top-k 100%
-BGE Chinese embedding: Top-1 80%, Top-k 100%
-```
-
-结论：
-
-```text
-BGE 中文 embedding 当前排序效果更好；两种模式都能在 Top 3 内召回正确 chunk。
-```
+- Python
+- Streamlit
+- Chroma
+- Sentence Transformers
+- OpenAI Python SDK
+- DeepSeek API
+- FastAPI
+- Uvicorn
+- pytest
+- python-multipart
+- BM25
+- RRF
 
 ## 运行方式
 
-先安装依赖：
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-启动应用：
+在仓库根目录运行：
 
 ```powershell
 python -m streamlit run "04_成果输出/rag-qa-system/app.py"
 ```
 
-如需启用 DeepSeek 生成回答，先在同一个 PowerShell 设置环境变量：
+打开：
+
+```text
+http://localhost:8501
+```
+
+## DeepSeek API Key
+
+生成回答需要在启动 Streamlit 的同一个 PowerShell 中设置环境变量：
 
 ```powershell
 $env:DEEPSEEK_API_KEY="your_api_key"
 python -m streamlit run "04_成果输出/rag-qa-system/app.py"
 ```
 
-注意：
+注意!!!：
 
 - 不要把 API Key 写进代码。
 - 不要把 API Key 提交到 GitHub。
-- 没有 API Key 时，仍然可以体验上传、切分、embedding 和检索评测。
+- 如果页面提示 key 未设置，先确认启动 Streamlit 的当前终端能读到该环境变量。
 
-## 目录结构
+检查命令：
 
-```text
-project002Python学习计划/
-  01_需求与目标/        # 项目目标、验收标准
-  02_资料与素材/        # 测试文档、知识库素材
-  03_执行过程/          # 每日练习代码
-  04_成果输出/          # 正式项目成果
-  05_复盘与沉淀/        # 阶段复盘、评测记录
-  python-learning/
-    daily-plan/          # 每日学习计划
-    learning-journal/    # 每日学习总结
+```powershell
+python -c "import os; print('set' if os.environ.get('DEEPSEEK_API_KEY') else 'missing')"
 ```
 
-## 关键文档
+## 测试文档
 
-- 正式项目 README：`04_成果输出/rag-qa-system/README.md`
-- 项目展示说明：`04_成果输出/rag-qa-system/PROJECT_BRIEF.md`
-- 截图清单：`04_成果输出/rag-qa-system/SCREENSHOT_CHECKLIST.md`
-- RAG 核心链路复盘：`05_复盘与沉淀/day14_rag_core_review.md`
-- 真实 embedding 方案研究：`05_复盘与沉淀/day27_embedding_solution_research.md`
-- BGE 评测结果：`05_复盘与沉淀/day30_bge_embedding_eval_result.md`
-- 评测指标复盘：`05_复盘与沉淀/day31_evaluation_review.md`
+推荐使用：
+
+```text
+02_资料与素材/day10_dify_knowledge/python_learning_faq.md
+```
+
+可测试问题：
+
+```text
+RAG 的基本流程是什么？
+API Key 为什么不能写进代码？
+什么是 embedding？
+向量数据库有什么作用？
+DeepSeek API 怎么配置？
+```
+
+## 检索评测
+
+Day21 发现：不同问题基本返回同一组 chunks，说明检索区分能力不足。
+
+Day22 优化后：不同问题已经能命中不同的 Top chunk。
+
+```text
+RAG 的基本流程是什么？        -> Chunk 6
+API Key 为什么不能写进代码？  -> Chunk 3
+什么是 embedding？            -> Chunk 4
+向量数据库有什么作用？        -> Chunk 5
+DeepSeek API 怎么配置？       -> Chunk 2
+```
+
+详细记录见：
+
+```text
+05_复盘与沉淀/day23_retrieval_evaluation_record.md
+05_复盘与沉淀/day31_evaluation_review.md
+05_复盘与沉淀/day33_app_metric_display.md
+```
+
+## Embedding 模式
+
+当前支持两种模式：
+
+```text
+Teaching keyword embedding
+BGE Chinese embedding
+```
+
+教学版关键词 embedding 适合理解向量检索原理，速度快、可解释。
+
+BGE 中文 embedding 使用 `BAAI/bge-small-zh-v1.5`，适合验证真实中文语义检索效果。首次运行可能需要加载本地模型。
+
+当前 FAQ 的评测结果：
+
+```text
+Teaching keyword embedding: Top-1 60%, Top-k 100%
+BGE Chinese embedding: Top-1 80%, Top-k 100%
+```
 
 ## 当前限制
 
 - 暂不支持 PDF 解析。
-- Chroma 当前使用临时 collection，没有持久化知识库。
+- Chroma 持久化目录是本地运行数据，不提交到 GitHub。
 - BGE 模型首次加载需要等待。
-- 当前还没有引入 rerank。
-- 当前测试文档较小，后续需要扩展到更真实的多文档场景。
-
-## 建议工作流
-
-1. 每天先读当天 `python-learning/daily-plan/`。
-2. 在项目目录内完成当天代码或文档任务。
-3. 将总结写入 `python-learning/learning-journal/`。
-4. 用固定问题验证关键功能。
-5. 提交并推送当天成果。
+- 当前评测重点是 top-1 hit 和 top-k recall，还没有引入 rerank。
+- BGE 首次加载会比教学版关键词 embedding 慢。
+- 自动化测试不调用真实 LLM API，避免依赖 API Key、网络和额度。
