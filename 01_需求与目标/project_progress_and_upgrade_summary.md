@@ -114,11 +114,12 @@ BGE 中文 embedding 的 Top-1 排序效果更好。
 - 根目录 README。
 - RAG 应用 README。
 - `PROJECT_BRIEF.md`。
+- `PROJECT_RESUME.md`。
 - `API.md`。
 - `ARCHITECTURE.md`。
 - `SCREENSHOT_CHECKLIST.md`。
 - 页面截图材料。
-- Day 14 到 Day 50 的学习记录和复盘记录。
+- Day 14 到 Day 54 的学习记录和复盘记录。
 - GitHub 提交记录。
 
 截图目录：
