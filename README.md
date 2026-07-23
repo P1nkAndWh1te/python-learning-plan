@@ -22,6 +22,7 @@ The application uses Streamlit for the UI, FastAPI for reusable backend endpoint
 ## Project Materials
 
 - 项目展示说明：`PROJECT_BRIEF.md`
+- 项目详细介绍：`PROJECT_DETAILED_GUIDE.md`
 - API 文档：`API.md`
 - 架构说明：`ARCHITECTURE.md`
 
