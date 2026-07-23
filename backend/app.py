@@ -1,22 +1,31 @@
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from openai import OpenAIError, RateLimitError
 from pydantic import BaseModel, Field
 
 from backend.services.bm25 import retrieve_relevant_chunks_bm25
 from backend.services.chunking import split_text_into_chunks
+from backend.services.document_parser import (
+    SUPPORTED_UPLOAD_EXTENSIONS,
+    get_file_extension,
+    parse_uploaded_document,
+)
 from backend.services.embeddings import COLLECTION_NAMES, KEYWORD_EMBEDDING_MODE
+from backend.services.errors import ErrorCode, raise_http_error
 from backend.services.evaluation import (
     EVALUATION_CASES,
     RETRIEVAL_MODES,
     calculate_hit_rate,
     calculate_top_k_hit_rate,
     evaluate_retrieval,
+    get_failure_cases,
 )
 from backend.services.generation import (
     MissingApiKeyError,
     format_sources,
     generate_answer_with_deepseek,
 )
+from backend.services.logging_config import get_logger
+from backend.services.rerank import rerank_chunks
 from backend.services.retrieval import (
     build_chunk_collection,
     format_retrieved_context,
@@ -29,7 +38,7 @@ from backend.services.rrf import retrieve_relevant_chunks_rrf
 
 DEFAULT_CHUNK_SIZE = 350
 DEFAULT_CHUNK_OVERLAP = 50
-SUPPORTED_UPLOAD_EXTENSIONS = {".txt", ".md"}
+logger = get_logger(__name__)
 
 
 class DocumentRequest(BaseModel):
@@ -53,6 +62,7 @@ class RetrievedChunk(BaseModel):
     distance: float | None = None
     score: float | None = None
     rrf_score: float | None = None
+    rerank_score: float | None = None
 
 
 class QaRequest(BaseModel):
@@ -107,6 +117,7 @@ class EvaluationRow(BaseModel):
     best_score: str
     hit: bool
     top_k_hit: bool
+    failure_reason: str
 
 
 class EvaluationResponse(BaseModel):
@@ -117,6 +128,7 @@ class EvaluationResponse(BaseModel):
     top_1_hit_rate: float
     top_k_recall: float
     rows: list[EvaluationRow]
+    failure_cases: list[EvaluationRow]
 
 
 app = FastAPI(
@@ -153,15 +165,29 @@ async def upload_document(
     chunk_overlap: int = Form(DEFAULT_CHUNK_OVERLAP),
 ) -> DocumentResponse:
     filename = file.filename or ""
-    extension = ""
-    if "." in filename:
-        extension = "." + filename.rsplit(".", maxsplit=1)[-1].lower()
+    extension = get_file_extension(filename)
 
     if extension not in SUPPORTED_UPLOAD_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="unsupported file type")
+        raise_http_error(
+            400,
+            ErrorCode.UNSUPPORTED_FILE_TYPE,
+            "unsupported file type",
+        )
 
     raw_bytes = await file.read()
-    text = decode_uploaded_text(raw_bytes)
+    try:
+        text, parser_name = parse_uploaded_document(raw_bytes, filename)
+    except ValueError as exc:
+        raise_http_error(400, ErrorCode.UNSUPPORTED_FILE_TYPE, str(exc))
+    except Exception as exc:
+        logger.exception("document parse failed filename=%s", filename)
+        raise_http_error(
+            400,
+            ErrorCode.DOCUMENT_PARSE_FAILED,
+            "document parse failed",
+        )
+
+    logger.info("uploaded document parsed filename=%s parser=%s", filename, parser_name)
     return create_document_from_text(
         text=text,
         embedding_mode=embedding_mode,
@@ -187,7 +213,11 @@ def create_document_from_text(
     chunk_overlap: int,
 ) -> DocumentResponse:
     if embedding_mode not in COLLECTION_NAMES:
-        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+        raise_http_error(
+            400,
+            ErrorCode.UNSUPPORTED_EMBEDDING_MODE,
+            "unsupported embedding mode",
+        )
 
     try:
         chunks = split_text_into_chunks(
@@ -196,14 +226,18 @@ def create_document_from_text(
             chunk_overlap=chunk_overlap,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_http_error(400, ErrorCode.INVALID_CHUNKING_CONFIG, str(exc))
 
     if not chunks:
-        raise HTTPException(status_code=400, detail="document text is empty")
+        raise_http_error(400, ErrorCode.EMPTY_DOCUMENT, "document text is empty")
 
     collection = build_chunk_collection(chunks, embedding_mode)
     if collection is None:
-        raise HTTPException(status_code=400, detail="document has no embeddable chunks")
+        raise_http_error(
+            400,
+            ErrorCode.NO_EMBEDDABLE_CHUNKS,
+            "document has no embeddable chunks",
+        )
 
     collection_name = get_collection_name(chunks, embedding_mode)
     document_id = collection_name.rsplit("_", maxsplit=1)[-1]
@@ -220,15 +254,15 @@ def create_document_from_text(
 @app.post("/qa", response_model=QaResponse)
 def query_document(request: QaRequest) -> QaResponse:
     if request.embedding_mode not in COLLECTION_NAMES:
-        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+        raise_http_error(400, ErrorCode.UNSUPPORTED_EMBEDDING_MODE, "unsupported embedding mode")
 
     if request.retrieval_mode not in RETRIEVAL_MODES:
-        raise HTTPException(status_code=400, detail="unsupported retrieval mode")
+        raise_http_error(400, ErrorCode.UNSUPPORTED_RETRIEVAL_MODE, "unsupported retrieval mode")
 
     retrieved_chunks = retrieve_chunks_for_request(request)
 
     if retrieved_chunks is None:
-        raise HTTPException(status_code=404, detail="collection not found")
+        raise_http_error(404, ErrorCode.COLLECTION_NOT_FOUND, "collection not found")
 
     return build_qa_response(request, retrieved_chunks)
 
@@ -236,23 +270,23 @@ def query_document(request: QaRequest) -> QaResponse:
 @app.post("/answer", response_model=AnswerResponse)
 def answer_document(request: AnswerRequest) -> AnswerResponse:
     if request.embedding_mode not in COLLECTION_NAMES:
-        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+        raise_http_error(400, ErrorCode.UNSUPPORTED_EMBEDDING_MODE, "unsupported embedding mode")
 
     if request.retrieval_mode not in RETRIEVAL_MODES:
-        raise HTTPException(status_code=400, detail="unsupported retrieval mode")
+        raise_http_error(400, ErrorCode.UNSUPPORTED_RETRIEVAL_MODE, "unsupported retrieval mode")
 
     retrieved_chunks = retrieve_chunks_for_request(request)
     if retrieved_chunks is None:
-        raise HTTPException(status_code=404, detail="collection not found")
+        raise_http_error(404, ErrorCode.COLLECTION_NOT_FOUND, "collection not found")
 
     try:
         answer = generate_answer_with_deepseek(request.question, retrieved_chunks)
     except MissingApiKeyError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise_http_error(503, ErrorCode.MISSING_API_KEY, str(exc))
     except RateLimitError as exc:
-        raise HTTPException(status_code=429, detail="LLM quota or rate limit failed") from exc
+        raise_http_error(429, ErrorCode.LLM_RATE_LIMIT, "LLM quota or rate limit failed")
     except OpenAIError as exc:
-        raise HTTPException(status_code=502, detail="LLM request failed") from exc
+        raise_http_error(502, ErrorCode.LLM_REQUEST_FAILED, "LLM request failed")
 
     qa_response = build_qa_response(request, retrieved_chunks)
     return AnswerResponse(
@@ -282,12 +316,16 @@ def retrieve_chunks_for_request(request: QaRequest) -> list[dict] | None:
             top_k=request.top_k,
         )
 
-    return retrieve_relevant_chunks_rrf(
+    rrf_chunks = retrieve_relevant_chunks_rrf(
         request.question,
         chunks,
-        top_k=request.top_k,
+        top_k=min(len(chunks), max(request.top_k * 2, request.top_k)),
         embedding_mode=request.embedding_mode,
     )
+    if request.retrieval_mode == "rerank":
+        return rerank_chunks(request.question, rrf_chunks, top_k=request.top_k)
+
+    return rrf_chunks[:request.top_k]
 
 
 def build_qa_response(request: QaRequest, retrieved_chunks: list[dict]) -> QaResponse:
@@ -304,6 +342,7 @@ def build_qa_response(request: QaRequest, retrieved_chunks: list[dict]) -> QaRes
                 distance=item.get("distance"),
                 score=item.get("score"),
                 rrf_score=item.get("rrf_score"),
+                rerank_score=item.get("rerank_score"),
             )
             for item in retrieved_chunks
         ],
@@ -314,10 +353,10 @@ def build_qa_response(request: QaRequest, retrieved_chunks: list[dict]) -> QaRes
 @app.post("/evaluation", response_model=EvaluationResponse)
 def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
     if request.embedding_mode not in COLLECTION_NAMES:
-        raise HTTPException(status_code=400, detail="unsupported embedding mode")
+        raise_http_error(400, ErrorCode.UNSUPPORTED_EMBEDDING_MODE, "unsupported embedding mode")
 
     if request.retrieval_mode not in RETRIEVAL_MODES:
-        raise HTTPException(status_code=400, detail="unsupported retrieval mode")
+        raise_http_error(400, ErrorCode.UNSUPPORTED_RETRIEVAL_MODE, "unsupported retrieval mode")
 
     try:
         chunks = split_text_into_chunks(
@@ -326,10 +365,10 @@ def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
             chunk_overlap=request.chunk_overlap,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise_http_error(400, ErrorCode.INVALID_CHUNKING_CONFIG, str(exc))
 
     if not chunks:
-        raise HTTPException(status_code=400, detail="document text is empty")
+        raise_http_error(400, ErrorCode.EMPTY_DOCUMENT, "document text is empty")
 
     evaluation_cases = (
         [case.model_dump() for case in request.evaluation_cases]
@@ -353,4 +392,5 @@ def evaluate_document(request: EvaluationRequest) -> EvaluationResponse:
         top_1_hit_rate=calculate_hit_rate(rows),
         top_k_recall=calculate_top_k_hit_rate(rows),
         rows=[EvaluationRow(**row) for row in rows],
+        failure_cases=[EvaluationRow(**row) for row in get_failure_cases(rows)],
     )

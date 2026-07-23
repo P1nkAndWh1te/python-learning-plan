@@ -36,7 +36,7 @@ def test_teaching_keyword_retrieval_metrics_stay_stable():
     )
 
     assert len(chunks) == 6
-    assert rag_app.calculate_hit_rate(rows) == 0.7
+    assert rag_app.calculate_hit_rate(rows) == 0.7333333333333333
     assert rag_app.calculate_top_k_hit_rate(rows) == 1.0
 
 

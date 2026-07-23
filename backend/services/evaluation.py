@@ -1,5 +1,6 @@
 from backend.services.bm25 import retrieve_relevant_chunks_bm25
 from backend.services.embeddings import KEYWORD_EMBEDDING_MODE, get_matched_concepts
+from backend.services.rerank import rerank_chunks
 from backend.services.retrieval import retrieve_relevant_chunks
 from backend.services.rrf import retrieve_relevant_chunks_rrf
 
@@ -8,15 +9,20 @@ EVALUATION_CASES = [
     {"question": "LLM API 如何配置？", "expected_top_chunk": 2},
     {"question": "DeepSeek API 怎么配置？", "expected_top_chunk": 2},
     {"question": "OpenAI-compatible API 和 ChatGPT Plus 额度互通吗？", "expected_top_chunk": 2},
+    {"question": "DeepSeek 使用哪个环境变量？", "expected_top_chunk": 2},
     {"question": "API Key 为什么不能写进代码？", "expected_top_chunk": 3},
     {"question": "怎么从环境变量读取 DEEPSEEK_API_KEY？", "expected_top_chunk": 3},
+    {"question": "密钥泄露有什么风险？", "expected_top_chunk": 3},
     {"question": "什么是 embedding？", "expected_top_chunk": 4},
     {"question": "embedding 如何用于检索？", "expected_top_chunk": 4},
+    {"question": "文本为什么要转成数字向量？", "expected_top_chunk": 4},
     {"question": "向量数据库有什么作用？", "expected_top_chunk": 5},
     {"question": "当前项目使用哪个向量数据库？", "expected_top_chunk": 5},
+    {"question": "Chroma 保存了什么？", "expected_top_chunk": 5},
     {"question": "RAG 的基本流程是什么？", "expected_top_chunk": 6},
+    {"question": "RAG 为什么要先检索资料？", "expected_top_chunk": 6},
 ]
-RETRIEVAL_MODES = {"vector", "bm25", "rrf"}
+RETRIEVAL_MODES = {"vector", "bm25", "rrf", "rerank"}
 
 
 def evaluate_retrieval(
@@ -62,10 +68,36 @@ def evaluate_retrieval(
                 "best_score": format_best_score(retrieved_chunks),
                 "hit": actual_top_chunk == expected_top_chunk,
                 "top_k_hit": expected_top_chunk in retrieved_chunk_indexes,
+                "failure_reason": build_failure_reason(
+                    actual_top_chunk,
+                    expected_top_chunk,
+                    retrieved_chunk_indexes,
+                ),
             }
         )
 
     return rows
+
+
+def get_failure_cases(evaluation_rows: list[dict]) -> list[dict]:
+    return [
+        row for row in evaluation_rows
+        if not row["hit"] or not row["top_k_hit"]
+    ]
+
+
+def build_failure_reason(
+    actual_top_chunk: int | None,
+    expected_top_chunk: int,
+    retrieved_chunk_indexes: list[int],
+) -> str:
+    if actual_top_chunk == expected_top_chunk:
+        return "none"
+
+    if expected_top_chunk in retrieved_chunk_indexes:
+        return "expected chunk was retrieved but not ranked first"
+
+    return "expected chunk was not retrieved in top_k"
 
 
 def retrieve_for_mode(
@@ -98,6 +130,15 @@ def retrieve_for_mode(
             embedding_mode=embedding_mode,
         )
 
+    if retrieval_mode == "rerank":
+        candidates = retrieve_relevant_chunks_rrf(
+            question,
+            chunks,
+            top_k=min(len(chunks), max(top_k * 2, top_k)),
+            embedding_mode=embedding_mode,
+        )
+        return rerank_chunks(question, candidates, top_k=top_k)
+
     raise ValueError("unsupported retrieval mode")
 
 
@@ -106,7 +147,7 @@ def format_best_score(retrieved_chunks: list[dict]) -> str:
         return "none"
 
     best_chunk = retrieved_chunks[0]
-    for key in ("distance", "score", "rrf_score"):
+    for key in ("rerank_score", "distance", "score", "rrf_score"):
         if key in best_chunk and best_chunk[key] is not None:
             return f"{best_chunk[key]:.4f}"
 

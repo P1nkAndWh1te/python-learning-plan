@@ -1,4 +1,6 @@
 from fastapi.testclient import TestClient
+from io import BytesIO
+from docx import Document
 
 from backend.app import app
 from backend.services.embeddings import KEYWORD_EMBEDDING_MODE
@@ -68,6 +70,29 @@ def test_documents_upload_endpoint_rejects_unsupported_file_type():
         },
         files={
             "file": (
+                "document.exe",
+                b"fake binary",
+                "application/octet-stream",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "unsupported_file_type"
+
+
+def test_documents_upload_endpoint_returns_parse_error_for_invalid_pdf():
+    client = TestClient(app)
+
+    response = client.post(
+        "/documents/upload",
+        data={
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": "350",
+            "chunk_overlap": "50",
+        },
+        files={
+            "file": (
                 "document.pdf",
                 b"%PDF-1.4 fake",
                 "application/pdf",
@@ -76,7 +101,38 @@ def test_documents_upload_endpoint_rejects_unsupported_file_type():
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "unsupported file type"
+    assert response.json()["detail"]["code"] == "document_parse_failed"
+
+
+def test_documents_upload_endpoint_indexes_docx_file():
+    client = TestClient(app)
+    buffer = BytesIO()
+    document = Document()
+    document.add_heading("DocuAsk FAQ", level=1)
+    document.add_paragraph("RAG 会先检索资料，再根据资料生成回答。")
+    document.save(buffer)
+
+    response = client.post(
+        "/documents/upload",
+        data={
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": "350",
+            "chunk_overlap": "50",
+        },
+        files={
+            "file": (
+                "docuask.docx",
+                buffer.getvalue(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["chunk_count"] == 1
+    assert payload["stored_chunk_count"] == 1
 
 
 def test_qa_endpoint_retrieves_expected_chunk():
@@ -184,6 +240,40 @@ def test_qa_endpoint_supports_rrf_mode():
     assert retrieved_chunks[0]["rrf_score"] > 0
 
 
+def test_qa_endpoint_supports_rerank_mode():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    document_response = client.post(
+        "/documents",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+        },
+    )
+    collection_name = document_response.json()["collection_name"]
+
+    qa_response = client.post(
+        "/qa",
+        json={
+            "collection_name": collection_name,
+            "question": "RAG 的基本流程是什么？",
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "top_k": 3,
+            "retrieval_mode": "rerank",
+        },
+    )
+
+    payload = qa_response.json()
+    retrieved_chunks = payload["retrieved_chunks"]
+
+    assert qa_response.status_code == 200
+    assert payload["retrieval_mode"] == "rerank"
+    assert retrieved_chunks[0]["rerank_score"] > 0
+
+
 def test_qa_endpoint_returns_404_for_missing_collection():
     client = TestClient(app)
 
@@ -258,7 +348,7 @@ def test_answer_endpoint_returns_503_when_api_key_is_missing(monkeypatch):
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "DEEPSEEK_API_KEY is not set."
+    assert response.json()["detail"]["code"] == "missing_api_key"
 
 
 def test_answer_endpoint_returns_400_for_unknown_retrieval_mode():
@@ -310,11 +400,15 @@ def test_evaluation_endpoint_returns_fixed_metrics():
     assert response.status_code == 200
     assert payload["retrieval_mode"] == "vector"
     assert payload["chunk_count"] == 6
-    assert payload["case_count"] == 10
-    assert payload["top_1_hit_rate"] == 0.7
+    assert payload["case_count"] == 15
+    assert payload["top_1_hit_rate"] == 0.7333333333333333
     assert payload["top_k_recall"] == 1.0
-    assert payload["rows"][-1]["question"] == "RAG 的基本流程是什么？"
-    assert payload["rows"][-1]["top_k_hit"] is True
+    assert len(payload["failure_cases"]) >= 1
+    rag_flow_row = next(
+        row for row in payload["rows"]
+        if row["question"] == "RAG 的基本流程是什么？"
+    )
+    assert rag_flow_row["top_k_hit"] is True
 
 
 def test_evaluation_endpoint_supports_bm25_mode():
@@ -338,7 +432,7 @@ def test_evaluation_endpoint_supports_bm25_mode():
     assert response.status_code == 200
     assert payload["retrieval_mode"] == "bm25"
     assert payload["chunk_count"] == 6
-    assert payload["case_count"] == 10
+    assert payload["case_count"] == 15
     assert payload["top_k_recall"] >= 0.8
 
 
@@ -363,8 +457,33 @@ def test_evaluation_endpoint_supports_rrf_mode():
     assert response.status_code == 200
     assert payload["retrieval_mode"] == "rrf"
     assert payload["chunk_count"] == 6
-    assert payload["case_count"] == 10
+    assert payload["case_count"] == 15
     assert payload["top_k_recall"] >= 0.8
+
+
+def test_evaluation_endpoint_supports_rerank_mode_and_failure_cases():
+    client = TestClient(app)
+    text = FAQ_PATH.read_text(encoding="utf-8")
+
+    response = client.post(
+        "/evaluation",
+        json={
+            "text": text,
+            "embedding_mode": KEYWORD_EMBEDDING_MODE,
+            "chunk_size": 350,
+            "chunk_overlap": 50,
+            "top_k": 3,
+            "retrieval_mode": "rerank",
+        },
+    )
+
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["retrieval_mode"] == "rerank"
+    assert payload["case_count"] == 15
+    assert "failure_cases" in payload
+    assert all("failure_reason" in row for row in payload["rows"])
 
 
 def test_evaluation_endpoint_supports_custom_cases():

@@ -18,6 +18,10 @@ services/evaluation.py
 services/generation.py
 services/retrieval.py
 services/rrf.py
+services/rerank.py
+services/document_parser.py
+services/errors.py
+services/logging_config.py
 storage/chroma_db*/ (local, ignored)
 ```
 
@@ -87,6 +91,8 @@ Current file support:
 ```text
 .txt
 .md
+.pdf
+.docx
 ```
 
 ## Query a Document
@@ -153,11 +159,12 @@ Current automated coverage:
 
 ```text
 POST /documents
-POST /documents/upload markdown upload and unsupported file type
-POST /qa with vector, bm25, and rrf retrieval modes
+POST /documents/upload markdown/docx upload, unsupported file type, and invalid PDF
+POST /qa with vector, bm25, rrf, and rerank retrieval modes
 POST /answer missing API key and unknown retrieval mode
-POST /evaluation with vector, bm25, and rrf retrieval modes
+POST /evaluation with vector, bm25, rrf, and rerank retrieval modes
 POST /evaluation with custom evaluation cases
+failure case recording
 404 for missing collection
 400 for unknown retrieval mode
 Teaching keyword retrieval metrics
@@ -185,8 +192,5 @@ retrieval_mode
 top_1_hit_rate
 top_k_recall
 rows
+failure_cases
 ```
-
-## Next
-
-The next step is to package the final project description and resume version.

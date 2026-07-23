@@ -7,7 +7,7 @@
 DocuAsk 是一个本地文档 RAG 问答系统原型，当前结构为：
 
 ```text
-Streamlit UI + FastAPI backend + file upload + reusable RAG services + Chroma persistent storage + LLM answer generation + retrieval evaluation
+Streamlit UI + FastAPI backend + file upload + reusable RAG services + Chroma persistent storage + rerank + LLM answer generation + retrieval evaluation
 ```
 
 当前重点解决三个问题：
@@ -33,6 +33,10 @@ docuask/
       generation.py
       bm25.py
       rrf.py
+      rerank.py
+      document_parser.py
+      errors.py
+      logging_config.py
       evaluation.py
     storage/
       chroma_db_v2/       # local ignored runtime data
@@ -45,7 +49,7 @@ docuask/
 
 ```mermaid
 flowchart TD
-    A["TXT / Markdown upload"] --> N["decode_uploaded_text"]
+    A["TXT / Markdown / PDF / Word upload"] --> N["parse_uploaded_document"]
     N --> B["split_text_into_chunks"]
     B --> C["embed_for_mode"]
     C --> D["Chroma PersistentClient"]
@@ -53,9 +57,11 @@ flowchart TD
     F --> G["vector retrieval"]
     F --> H["BM25 retrieval"]
     F --> I["RRF fusion"]
+    F --> R["Rerank"]
     G --> J["Retrieved chunks"]
     H --> J
     I --> J
+    R --> J
     J --> K["Context with Chunk sources"]
     K --> L["DeepSeek generation"]
     J --> M["/evaluation metrics"]
@@ -66,6 +72,7 @@ flowchart TD
 - `vector` 使用 Chroma cosine distance。
 - `bm25` 使用本地轻量 BM25 关键词检索。
 - `rrf` 融合 vector ranking 和 BM25 ranking。
+- `rerank` 先召回候选 chunks，再做本地轻量重排。
 - Streamlit 页面当前负责用户交互。
 - FastAPI 后端当前负责文档入库、检索问答、LLM answer 生成和检索评测。
 
@@ -79,7 +86,11 @@ flowchart TD
 | `generation.py` | 管理 RAG prompt、DeepSeek 调用和 sources 格式化 |
 | `bm25.py` | 提供关键词检索 baseline |
 | `rrf.py` | 融合向量检索和 BM25 排名 |
-| `evaluation.py` | 固定 10 题检索评测，计算 Top-1 hit 和 Top-k recall |
+| `rerank.py` | 对候选 chunk 做二阶段重排 |
+| `document_parser.py` | 解析 TXT / Markdown / PDF / Word 上传文件 |
+| `errors.py` | 统一错误码和错误响应结构 |
+| `logging_config.py` | 基础日志配置 |
+| `evaluation.py` | 固定 15 题检索评测，计算 Top-1 hit、Top-k recall 和 failure cases |
 
 ## 接口边界
 
@@ -90,7 +101,7 @@ flowchart TD
 | `POST /documents/upload` | 接收 `.txt/.md` 文件并复用文档入库流程 |
 | `POST /qa` | 对已入库 collection 执行 Top-k 检索 |
 | `POST /answer` | 检索 chunks 后调用 LLM 生成 answer 和 sources |
-| `POST /evaluation` | 用固定问题集评估检索模式 |
+| `POST /evaluation` | 用固定问题集评估检索模式，并记录 failure cases |
 
 `POST /evaluation` 默认使用 FAQ 10 题，也支持传入自定义 `evaluation_cases`，用于不同文档配置不同问题集。
 
@@ -101,13 +112,15 @@ flowchart TD
 | `vector` | 语义相似问题 | 原始向量检索 baseline |
 | `bm25` | 关键词、专有名词、配置项问题 | 关键词检索 baseline |
 | `rrf` | 需要融合语义和关键词排序 | 混合检索对比方案 |
+| `rerank` | 候选已召回但 Top-1 排序不稳 | 二阶段重排方案 |
 
 FAQ 固定评测结果：
 
 ```text
-vector Top-1: 0.7, Top-k: 1.0
-bm25  Top-1: 0.8, Top-k: 0.9
-rrf   Top-1: 0.8, Top-k: 0.9
+vector Top-1: 0.733, Top-k: 1.0
+bm25   Top-1: 0.867, Top-k: 0.933
+rrf    Top-1: 0.8,   Top-k: 0.933
+rerank Top-1: 0.867, Top-k: 1.0
 ```
 
 这个结果只能说明当前 FAQ 文档和 10 个固定问题下的表现。
@@ -150,7 +163,7 @@ uploaded_document_chunks_bge_v3_xxxxxxxxxxxx
 当前评测能力包括：
 
 ```text
-默认 FAQ 评测 + 自定义 evaluation cases + 多文档小样本评测
+默认 FAQ 评测 + 自定义 evaluation cases + 多文档小样本评测 + failure cases
 ```
 
 原因：
@@ -164,21 +177,21 @@ uploaded_document_chunks_bge_v3_xxxxxxxxxxxx
 当前仍不能夸大为：
 
 - 生产级多用户系统。
-- 支持 PDF / Word 等复杂文档解析。
+- 支持扫描版 PDF OCR。
 - 支持权限管理或多租户知识库。
 - 大规模评测或压测完成。
-- 已接入 rerank 模型。
+- 已接入外部 rerank 模型。
 - 大规模线上 LLM 调用稳定性验证。
 
 更准确的当前表述：
 
 ```text
-DocuAsk 已完成本地 `.txt/.md` 文件上传、切分、向量入库、三种检索模式、来源上下文展示、LLM answer 生成和固定问题检索评测。
+DocuAsk 已完成本地 `.txt/.md/.pdf/.docx` 文件上传、切分、向量入库、四种检索模式、来源上下文展示、LLM answer 生成、failure cases 和固定问题检索评测。
 ```
 
 ## 下一步
 
 建议下一阶段优先做：
 
-1. 扩大评测集并记录失败案例。
-2. 评估是否引入 rerank 或 Docker Compose。
+1. 扩大真实业务文档评测集。
+2. 评估是否引入外部 cross-encoder rerank 模型。

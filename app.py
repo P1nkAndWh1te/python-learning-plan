@@ -10,6 +10,7 @@ if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
 from backend.services.chunking import split_text_into_chunks
+from backend.services.document_parser import parse_uploaded_document
 from backend.services.embeddings import (
     BGE_EMBEDDING_MODE,
     BGE_MODEL_NAME,
@@ -18,18 +19,17 @@ from backend.services.embeddings import (
 )
 from backend.services.evaluation import (
     EVALUATION_CASES,
+    RETRIEVAL_MODES,
     calculate_hit_rate,
     calculate_top_k_hit_rate,
     evaluate_retrieval,
+    retrieve_for_mode,
 )
 from backend.services.generation import (
     MissingApiKeyError,
     generate_answer_with_deepseek,
 )
-from backend.services.retrieval import (
-    format_retrieved_context,
-    retrieve_relevant_chunks,
-)
+from backend.services.retrieval import format_retrieved_context
 
 
 MAX_PREVIEW_CHARS = 2000
@@ -39,14 +39,8 @@ TOP_K = 3
 
 def read_uploaded_text(uploaded_file) -> tuple[str, str]:
     raw_bytes = uploaded_file.getvalue()
-
-    for encoding in ("utf-8", "gbk"):
-        try:
-            return raw_bytes.decode(encoding), encoding
-        except UnicodeDecodeError:
-            continue
-
-    return raw_bytes.decode("utf-8", errors="replace"), "utf-8 with replacement"
+    text, parser_name = parse_uploaded_document(raw_bytes, uploaded_file.name)
+    return text, parser_name
 
 
 def main() -> None:
@@ -72,17 +66,34 @@ def main() -> None:
             "or question may take longer."
         )
 
+    retrieval_mode = st.sidebar.selectbox(
+        "Retrieval mode",
+        sorted(RETRIEVAL_MODES),
+        index=sorted(RETRIEVAL_MODES).index("rerank"),
+        help="Rerank retrieves candidates first and then reorders them with a local reranker.",
+    )
+    st.sidebar.caption(f"Current retrieval: {retrieval_mode}")
+
     uploaded_file = st.file_uploader(
         "Upload a document",
-        type=["txt", "md"],
-        help="Supports plain text and Markdown files.",
+        type=["txt", "md", "pdf", "docx"],
+        help="Supports TXT, Markdown, PDF, and Word documents.",
     )
 
     document_text = ""
     chunks = []
 
     if uploaded_file is not None:
-        document_text, encoding = read_uploaded_text(uploaded_file)
+        try:
+            document_text, encoding = read_uploaded_text(uploaded_file)
+        except ValueError as exc:
+            st.error(str(exc))
+            st.stop()
+        except Exception as exc:
+            st.error("Could not parse the uploaded document.")
+            st.exception(exc)
+            st.stop()
+
         file_size = len(uploaded_file.getvalue())
         chunks = split_text_into_chunks(
             document_text,
@@ -118,6 +129,7 @@ def main() -> None:
             chunks,
             top_k=TOP_K,
             embedding_mode=embedding_mode,
+            retrieval_mode=retrieval_mode,
         )
         hit_rate = calculate_hit_rate(evaluation_rows)
         top_k_hit_rate = calculate_top_k_hit_rate(evaluation_rows)
@@ -148,11 +160,12 @@ def main() -> None:
             return
 
         st.subheader("Answer")
-        retrieved_chunks = retrieve_relevant_chunks(
+        retrieved_chunks = retrieve_for_mode(
             question,
             chunks,
             top_k=TOP_K,
             embedding_mode=embedding_mode,
+            retrieval_mode=retrieval_mode,
         )
         matched_concepts = get_matched_concepts(question)
 
@@ -165,12 +178,12 @@ def main() -> None:
 
         st.write(
             f"The app has embedded chunks with {embedding_mode} and retrieved "
-            "the most relevant chunks from Chroma. DeepSeek will generate the final "
+            f"the most relevant chunks with {retrieval_mode}. DeepSeek will generate the final "
             "answer from these chunks only."
         )
 
         st.write("Matched concepts:", ", ".join(matched_concepts))
-        st.caption("Distance is returned by Chroma. Lower distance means more similar.")
+        st.caption("Scores depend on retrieval mode. For Chroma distance, lower means more similar.")
 
         st.subheader("Context for later LLM")
         st.code(format_retrieved_context(retrieved_chunks), language="markdown")
@@ -206,11 +219,25 @@ def main() -> None:
 
         st.subheader("Retrieved chunks")
         for rank, item in enumerate(retrieved_chunks, start=1):
+            score_label = format_score_label(item)
             with st.expander(
-                f"Rank {rank} | Chunk {item['chunk_index']} | Distance {item['distance']:.4f}",
+                f"Rank {rank} | Chunk {item['chunk_index']} | {score_label}",
                 expanded=rank == 1,
             ):
                 st.code(item["text"], language="markdown")
+
+
+def format_score_label(item: dict) -> str:
+    for key, label in (
+        ("rerank_score", "Rerank score"),
+        ("rrf_score", "RRF score"),
+        ("score", "BM25 score"),
+        ("distance", "Distance"),
+    ):
+        if key in item and item[key] is not None:
+            return f"{label} {item[key]:.4f}"
+
+    return "Score n/a"
 
 
 if __name__ == "__main__":

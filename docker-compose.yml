@@ -1,0 +1,12 @@
+services:
+  docuask:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+    volumes:
+      - docuask_chroma:/app/backend/storage
+
+volumes:
+  docuask_chroma:

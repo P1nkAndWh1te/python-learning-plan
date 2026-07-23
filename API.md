@@ -65,7 +65,7 @@ stored_chunk_count
 
 ## POST /documents/upload
 
-用途：上传 `.txt` 或 `.md` 文件，并复用文档入库流程写入 Chroma。
+用途：上传 `.txt`、`.md`、`.pdf` 或 `.docx` 文件，并复用文档入库流程写入 Chroma。
 
 请求类型：
 
@@ -77,7 +77,7 @@ multipart/form-data
 
 | Field | Type | Required | 说明 |
 |---|---|---|---|
-| `file` | file | yes | `.txt` 或 `.md` 文件 |
+| `file` | file | yes | `.txt`、`.md`、`.pdf` 或 `.docx` 文件 |
 | `embedding_mode` | form string | no | 默认 `Teaching keyword embedding` |
 | `chunk_size` | form int | no | 默认 `350` |
 | `chunk_overlap` | form int | no | 默认 `50` |
@@ -94,9 +94,9 @@ stored_chunk_count
 
 说明：
 
-- 当前只接受 `.txt` 和 `.md`。
+- 当前接受 `.txt`、`.md`、`.pdf` 和 `.docx`。
 - 当前按 `utf-8`、`gbk` 顺序尝试解码。
-- 不支持 PDF / Word。
+- PDF / Word 只支持可提取文本，不支持扫描版 PDF OCR。
 
 ## POST /qa
 
@@ -120,6 +120,7 @@ stored_chunk_count
 vector
 bm25
 rrf
+rerank
 ```
 
 响应字段：
@@ -141,6 +142,7 @@ context
 | `vector` | `distance` | Chroma cosine distance，越低越相似 |
 | `bm25` | `score` | BM25 关键词得分，越高越相关 |
 | `rrf` | `rrf_score` | RRF 融合排序得分，越高排序越靠前 |
+| `rerank` | `rerank_score` | 本地二阶段重排得分，越高排序越靠前 |
 
 ## POST /answer
 
@@ -214,6 +216,7 @@ case_count
 top_1_hit_rate
 top_k_recall
 rows
+failure_cases
 ```
 
 `evaluation_cases` 字段说明：
@@ -227,11 +230,12 @@ rows
 
 | Retrieval mode | Top-1 hit | Top-k recall |
 |---|---:|---:|
-| `vector` | 0.7 | 1.0 |
-| `bm25` | 0.8 | 0.9 |
-| `rrf` | 0.8 | 0.9 |
+| `vector` | 0.733 | 1.0 |
+| `bm25` | 0.867 | 0.933 |
+| `rrf` | 0.8 | 0.933 |
+| `rerank` | 0.867 | 1.0 |
 
-结论：在当前小型 FAQ 测试集上，RRF 的 Top-1 表现最好；但这只是 10 题固定评测结果，不能直接推断到所有文档场景。
+结论：在当前小型 FAQ 测试集上，BM25 和 rerank 的 Top-1 表现更好，rerank 同时保持 100% Top-k recall；但这只是 15 题固定评测结果，不能直接推断到所有文档场景。
 
 ## 错误处理
 
@@ -242,6 +246,7 @@ rows
 | 不支持的 embedding mode | 400 |
 | 不支持的 retrieval mode | 400 |
 | `/documents/upload` 不支持的文件后缀 | 400 |
+| `/documents/upload` 文件解析失败 | 400 |
 | 空文档 | 400 |
 | 文档没有可入库 chunk | 400 |
 | 查询不存在的 collection | 404 |
@@ -261,11 +266,12 @@ python -m pytest -q
 
 ```text
 POST /documents
-POST /documents/upload: markdown upload and unsupported file type
-POST /qa: vector / bm25 / rrf
+POST /documents/upload: markdown upload, docx upload, unsupported file type, and invalid PDF
+POST /qa: vector / bm25 / rrf / rerank
 POST /answer: missing API key and unknown retrieval mode
-POST /evaluation: vector / bm25 / rrf
+POST /evaluation: vector / bm25 / rrf / rerank
 POST /evaluation: custom evaluation cases
+POST /evaluation: failure cases
 missing collection -> 404
 unknown retrieval mode -> 400
 Teaching keyword retrieval metrics
